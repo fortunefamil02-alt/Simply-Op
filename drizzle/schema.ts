@@ -194,6 +194,9 @@ export const cleaningJobs = mysqlTable(
     gpsEndLng: decimal("gps_end_lng", { precision: 11, scale: 8 }),
     invoiceId: varchar("invoice_id", { length: 64 }), // Link to invoice after completion
     accessDenied: boolean("access_denied").notNull().default(false), // Guest present, job not started
+    overriddenBy: varchar("overridden_by", { length: 64 }), // Manager who overrode completion
+    overrideReason: text("override_reason"), // Why manager overrode
+    overriddenAt: timestamp("overridden_at"), // When override occurred
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
