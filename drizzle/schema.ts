@@ -195,8 +195,9 @@ export const cleaningJobs = mysqlTable(
     invoiceId: varchar("invoice_id", { length: 64 }), // Link to invoice after completion
     accessDenied: boolean("access_denied").notNull().default(false), // Guest present, job not started
     overriddenBy: varchar("overridden_by", { length: 64 }), // Manager who overrode completion
-    overrideReason: text("override_reason"), // Why manager overrode
+    overrideReason: text("override_reason"), // Why manager overrode (required)
     overriddenAt: timestamp("overridden_at"), // When override occurred
+    overrideStatus: varchar("override_status", { length: 50 }), // Explicit: "completed" or "needs_review"
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
@@ -273,6 +274,7 @@ export const media = mysqlTable(
     room: varchar("room", { length: 100 }), // e.g., "Master Bedroom", "Kitchen"
     isRequired: boolean("is_required").notNull().default(false),
     uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+    isVoided: boolean("is_voided").notNull().default(false), // Soft-void for corrections
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
@@ -389,6 +391,9 @@ export const invoiceLineItems = mysqlTable(
     jobId: varchar("job_id", { length: 64 }).notNull(),
     price: decimal("price", { precision: 10, scale: 2 }).notNull(), // Original job price
     adjustedPrice: decimal("adjusted_price", { precision: 10, scale: 2 }), // Manager override (before submission only)
+    isVoided: boolean("is_voided").notNull().default(false), // Soft-void for corrections
+    voidReason: text("void_reason"), // Why this line item was voided
+    voidedAt: timestamp("voided_at"), // When this line item was voided
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
@@ -399,6 +404,54 @@ export const invoiceLineItems = mysqlTable(
 
 export type InvoiceLineItem = typeof invoiceLineItems.$inferSelect;
 export type InsertInvoiceLineItem = typeof invoiceLineItems.$inferInsert;
+
+// ============================================================================
+// SOFT-VOID AUDIT TABLES
+// ============================================================================
+
+export const mediaVoidAudit = mysqlTable(
+  "media_void_audit",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    mediaId: varchar("media_id", { length: 64 }).notNull(),
+    jobId: varchar("job_id", { length: 64 }).notNull(),
+    voidReason: text("void_reason").notNull(),
+    voidedBy: varchar("voided_by", { length: 64 }).notNull(), // User ID who voided
+    voidedAt: timestamp("voided_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    mediaIdx: index("media_void_audit_media_id_idx").on(table.mediaId),
+    jobIdx: index("media_void_audit_job_id_idx").on(table.jobId),
+    userIdx: index("media_void_audit_voided_by_idx").on(table.voidedBy),
+  })
+);
+
+export type MediaVoidAudit = typeof mediaVoidAudit.$inferSelect;
+export type InsertMediaVoidAudit = typeof mediaVoidAudit.$inferInsert;
+
+export const invoiceLineItemVoidAudit = mysqlTable(
+  "invoice_line_item_void_audit",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    lineItemId: varchar("line_item_id", { length: 64 }).notNull(),
+    invoiceId: varchar("invoice_id", { length: 64 }).notNull(),
+    jobId: varchar("job_id", { length: 64 }).notNull(),
+    voidReason: text("void_reason").notNull(),
+    voidedBy: varchar("voided_by", { length: 64 }).notNull(), // User ID who voided
+    voidedAt: timestamp("voided_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    lineItemIdx: index("invoice_line_item_void_audit_line_item_id_idx").on(table.lineItemId),
+    invoiceIdx: index("invoice_line_item_void_audit_invoice_id_idx").on(table.invoiceId),
+    jobIdx: index("invoice_line_item_void_audit_job_id_idx").on(table.jobId),
+    userIdx: index("invoice_line_item_void_audit_voided_by_idx").on(table.voidedBy),
+  })
+);
+
+export type InvoiceLineItemVoidAudit = typeof invoiceLineItemVoidAudit.$inferSelect;
+export type InsertInvoiceLineItemVoidAudit = typeof invoiceLineItemVoidAudit.$inferInsert;
 
 // ============================================================================
 // NOTIFICATIONS
