@@ -5,11 +5,10 @@ import {
   timestamp,
   boolean,
   decimal,
-  json,
   varchar,
   mysqlEnum,
   index,
-  foreignKey,
+  unique,
   primaryKey,
 } from "drizzle-orm/mysql-core";
 import { relations } from "drizzle-orm";
@@ -26,6 +25,12 @@ export const jobStatusEnum = mysqlEnum("job_status", [
   "completed",
   "needs_review",
 ]);
+export const bookingStatusEnum = mysqlEnum("booking_status", [
+  "confirmed",
+  "cancelled",
+  "no_show",
+]);
+export const platformEnum = mysqlEnum("platform", ["guesty", "hostaway", "other"]);
 export const invoiceStatusEnum = mysqlEnum("invoice_status", [
   "open",
   "submitted",
@@ -34,6 +39,37 @@ export const invoiceStatusEnum = mysqlEnum("invoice_status", [
 ]);
 export const invoiceCycleEnum = mysqlEnum("invoice_cycle", ["1st", "15th", "bi_weekly"]);
 export const damageSeverityEnum = mysqlEnum("damage_severity", ["minor", "moderate", "severe"]);
+export const mediaTypeEnum = mysqlEnum("media_type", ["photo", "video"]);
+export const notificationTypeEnum = mysqlEnum("notification_type", [
+  "job_assigned",
+  "job_accepted",
+  "job_completed",
+  "damage_reported",
+  "message",
+  "invoice_ready",
+]);
+
+// ============================================================================
+// BUSINESSES
+// ============================================================================
+
+export const businesses = mysqlTable("businesses", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  phone: varchar("phone", { length: 20 }),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 50 }),
+  zipCode: varchar("zip_code", { length: 20 }),
+  country: varchar("country", { length: 100 }).default("US"),
+  timezone: varchar("timezone", { length: 50 }).default("America/Los_Angeles"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+});
+
+export type Business = typeof businesses.$inferSelect;
+export type InsertBusiness = typeof businesses.$inferInsert;
 
 // ============================================================================
 // USERS & ROLES
@@ -43,21 +79,21 @@ export const users = mysqlTable(
   "users",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
-    email: varchar("email", { length: 255 }).notNull().unique(),
+    businessId: varchar("business_id", { length: 64 }).notNull(),
+    email: varchar("email", { length: 255 }).notNull(),
     passwordHash: text("password_hash").notNull(),
     firstName: varchar("first_name", { length: 100 }),
     lastName: varchar("last_name", { length: 100 }),
+    phone: varchar("phone", { length: 20 }),
     role: roleEnum.notNull().default("cleaner"),
-    companyId: varchar("company_id", { length: 64 }), // Super Manager's company
-    managerId: varchar("manager_id", { length: 64 }), // Manager's parent Super Manager
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
   (table) => ({
-    emailIdx: index("users_email_idx").on(table.email),
+    businessEmailIdx: unique("users_business_email_unique").on(table.businessId, table.email),
+    businessIdx: index("users_business_id_idx").on(table.businessId),
     roleIdx: index("users_role_idx").on(table.role),
-    companyIdx: index("users_company_id_idx").on(table.companyId),
   })
 );
 
@@ -72,8 +108,7 @@ export const properties = mysqlTable(
   "properties",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
-    companyId: varchar("company_id", { length: 64 }).notNull(),
-    managerId: varchar("manager_id", { length: 64 }).notNull(),
+    businessId: varchar("business_id", { length: 64 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     address: text("address").notNull(),
     city: varchar("city", { length: 100 }),
@@ -88,8 +123,7 @@ export const properties = mysqlTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
   (table) => ({
-    companyIdx: index("properties_company_id_idx").on(table.companyId),
-    managerIdx: index("properties_manager_id_idx").on(table.managerId),
+    businessIdx: index("properties_business_id_idx").on(table.businessId),
   })
 );
 
@@ -97,7 +131,87 @@ export type Property = typeof properties.$inferSelect;
 export type InsertProperty = typeof properties.$inferInsert;
 
 // ============================================================================
-// INVENTORY
+// BOOKINGS (Normalized from PMS platforms)
+// ============================================================================
+
+export const bookings = mysqlTable(
+  "bookings",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    businessId: varchar("business_id", { length: 64 }).notNull(),
+    propertyId: varchar("property_id", { length: 64 }).notNull(),
+    platform: platformEnum.notNull(), // "guesty", "hostaway", "other"
+    externalBookingId: varchar("external_booking_id", { length: 255 }).notNull(),
+    guestName: varchar("guest_name", { length: 255 }).notNull(),
+    guestEmail: varchar("guest_email", { length: 255 }),
+    guestPhone: varchar("guest_phone", { length: 20 }),
+    guestCount: int("guest_count").notNull().default(1),
+    hasPets: boolean("has_pets").notNull().default(false),
+    checkInDate: timestamp("check_in_date").notNull(),
+    checkOutDate: timestamp("check_out_date").notNull(),
+    status: bookingStatusEnum.notNull().default("confirmed"),
+    notes: text("notes"),
+    lastSyncedAt: timestamp("last_synced_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    businessIdx: index("bookings_business_id_idx").on(table.businessId),
+    propertyIdx: index("bookings_property_id_idx").on(table.propertyId),
+    platformExternalIdx: unique("bookings_platform_external_unique").on(
+      table.platform,
+      table.externalBookingId
+    ),
+    checkOutIdx: index("bookings_check_out_date_idx").on(table.checkOutDate),
+  })
+);
+
+export type Booking = typeof bookings.$inferSelect;
+export type InsertBooking = typeof bookings.$inferInsert;
+
+// ============================================================================
+// CLEANING JOBS (Auto-generated from bookings)
+// ============================================================================
+
+export const cleaningJobs = mysqlTable(
+  "cleaning_jobs",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    businessId: varchar("business_id", { length: 64 }).notNull(),
+    bookingId: varchar("booking_id", { length: 64 }).notNull().unique(),
+    propertyId: varchar("property_id", { length: 64 }).notNull(),
+    cleaningDate: timestamp("cleaning_date").notNull(), // Booking checkout date
+    status: jobStatusEnum.notNull().default("available"),
+    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+    instructions: text("instructions"), // Manager's instructions for this job
+    assignedCleanerId: varchar("assigned_cleaner_id", { length: 64 }), // Cleaner or manager acting as cleaner
+    acceptedAt: timestamp("accepted_at"),
+    startedAt: timestamp("started_at"), // When first photo uploaded
+    completedAt: timestamp("completed_at"),
+    gpsStartLat: decimal("gps_start_lat", { precision: 10, scale: 8 }),
+    gpsStartLng: decimal("gps_start_lng", { precision: 11, scale: 8 }),
+    gpsEndLat: decimal("gps_end_lat", { precision: 10, scale: 8 }),
+    gpsEndLng: decimal("gps_end_lng", { precision: 11, scale: 8 }),
+    invoiceId: varchar("invoice_id", { length: 64 }), // Link to invoice after completion
+    accessDenied: boolean("access_denied").notNull().default(false), // Guest present, job not started
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    businessIdx: index("cleaning_jobs_business_id_idx").on(table.businessId),
+    bookingIdx: index("cleaning_jobs_booking_id_idx").on(table.bookingId),
+    propertyIdx: index("cleaning_jobs_property_id_idx").on(table.propertyId),
+    cleanerIdx: index("cleaning_jobs_assigned_cleaner_id_idx").on(table.assignedCleanerId),
+    statusIdx: index("cleaning_jobs_status_idx").on(table.status),
+    cleaningDateIdx: index("cleaning_jobs_cleaning_date_idx").on(table.cleaningDate),
+  })
+);
+
+export type CleaningJob = typeof cleaningJobs.$inferSelect;
+export type InsertCleaningJob = typeof cleaningJobs.$inferInsert;
+
+// ============================================================================
+// INVENTORY (Per-property definitions)
 // ============================================================================
 
 export const inventoryItems = mysqlTable(
@@ -120,53 +234,11 @@ export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type InsertInventoryItem = typeof inventoryItems.$inferInsert;
 
 // ============================================================================
-// JOBS
+// INVENTORY LOGS (Per-job tracking)
 // ============================================================================
 
-export const jobs = mysqlTable(
-  "jobs",
-  {
-    id: varchar("id", { length: 64 }).primaryKey(),
-    companyId: varchar("company_id", { length: 64 }).notNull(),
-    propertyId: varchar("property_id", { length: 64 }).notNull(),
-    managerId: varchar("manager_id", { length: 64 }).notNull(),
-    cleanerId: varchar("cleaner_id", { length: 64 }), // Assigned cleaner (nullable if not yet assigned)
-    status: jobStatusEnum.notNull().default("available"),
-    scheduledDate: timestamp("scheduled_date").notNull(),
-    guestCount: int("guest_count"),
-    hasPets: boolean("has_pets").default(false),
-    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-    instructions: text("instructions"), // Manager's job-specific instructions
-    startTime: timestamp("start_time"), // When first photo uploaded
-    endTime: timestamp("end_time"), // When Done pressed
-    gpsStartLat: decimal("gps_start_lat", { precision: 10, scale: 8 }),
-    gpsStartLng: decimal("gps_start_lng", { precision: 11, scale: 8 }),
-    gpsEndLat: decimal("gps_end_lat", { precision: 10, scale: 8 }),
-    gpsEndLng: decimal("gps_end_lng", { precision: 11, scale: 8 }),
-    invoiceId: varchar("invoice_id", { length: 64 }), // Link to invoice (after completion)
-    accessDenied: boolean("access_denied").default(false), // Guest present, job not started
-    createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
-  },
-  (table) => ({
-    companyIdx: index("jobs_company_id_idx").on(table.companyId),
-    propertyIdx: index("jobs_property_id_idx").on(table.propertyId),
-    managerIdx: index("jobs_manager_id_idx").on(table.managerId),
-    cleanerIdx: index("jobs_cleaner_id_idx").on(table.cleanerId),
-    statusIdx: index("jobs_status_idx").on(table.status),
-    scheduledDateIdx: index("jobs_scheduled_date_idx").on(table.scheduledDate),
-  })
-);
-
-export type Job = typeof jobs.$inferSelect;
-export type InsertJob = typeof jobs.$inferInsert;
-
-// ============================================================================
-// JOB INVENTORY TRACKING
-// ============================================================================
-
-export const jobInventoryLog = mysqlTable(
-  "job_inventory_log",
+export const inventoryLogs = mysqlTable(
+  "inventory_logs",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
     jobId: varchar("job_id", { length: 64 }).notNull(),
@@ -176,43 +248,44 @@ export const jobInventoryLog = mysqlTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    jobIdx: index("job_inventory_log_job_id_idx").on(table.jobId),
-    inventoryIdx: index("job_inventory_log_inventory_item_id_idx").on(table.inventoryItemId),
+    jobIdx: index("inventory_logs_job_id_idx").on(table.jobId),
+    inventoryIdx: index("inventory_logs_inventory_item_id_idx").on(table.inventoryItemId),
   })
 );
 
-export type JobInventoryLog = typeof jobInventoryLog.$inferSelect;
-export type InsertJobInventoryLog = typeof jobInventoryLog.$inferInsert;
+export type InventoryLog = typeof inventoryLogs.$inferSelect;
+export type InsertInventoryLog = typeof inventoryLogs.$inferInsert;
 
 // ============================================================================
-// PHOTOS
+// MEDIA (Photos/Videos)
 // ============================================================================
 
-export const photos = mysqlTable(
-  "photos",
+export const media = mysqlTable(
+  "media",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
     jobId: varchar("job_id", { length: 64 }).notNull(),
+    type: mediaTypeEnum.notNull(), // "photo" or "video"
     uri: text("uri").notNull(), // Cloud URL (S3)
     room: varchar("room", { length: 100 }), // e.g., "Master Bedroom", "Kitchen"
-    isRequired: boolean("is_required").default(false),
+    isRequired: boolean("is_required").notNull().default(false),
     uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    jobIdx: index("photos_job_id_idx").on(table.jobId),
+    jobIdx: index("media_job_id_idx").on(table.jobId),
   })
 );
 
-export type Photo = typeof photos.$inferSelect;
-export type InsertPhoto = typeof photos.$inferInsert;
+export type Media = typeof media.$inferSelect;
+export type InsertMedia = typeof media.$inferInsert;
 
 // ============================================================================
-// DAMAGES
+// DAMAGE REPORTS
 // ============================================================================
 
-export const damages = mysqlTable(
-  "damages",
+export const damageReports = mysqlTable(
+  "damage_reports",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
     jobId: varchar("job_id", { length: 64 }).notNull(),
@@ -222,24 +295,24 @@ export const damages = mysqlTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    jobIdx: index("damages_job_id_idx").on(table.jobId),
+    jobIdx: index("damage_reports_job_id_idx").on(table.jobId),
   })
 );
 
-export type Damage = typeof damages.$inferSelect;
-export type InsertDamage = typeof damages.$inferInsert;
+export type DamageReport = typeof damageReports.$inferSelect;
+export type InsertDamageReport = typeof damageReports.$inferInsert;
 
 export const damagePhotos = mysqlTable(
   "damage_photos",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
-    damageId: varchar("damage_id", { length: 64 }).notNull(),
+    damageReportId: varchar("damage_report_id", { length: 64 }).notNull(),
     uri: text("uri").notNull(), // Cloud URL (S3)
     uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    damageIdx: index("damage_photos_damage_id_idx").on(table.damageId),
+    damageIdx: index("damage_photos_damage_report_id_idx").on(table.damageReportId),
   })
 );
 
@@ -247,11 +320,11 @@ export type DamagePhoto = typeof damagePhotos.$inferSelect;
 export type InsertDamagePhoto = typeof damagePhotos.$inferInsert;
 
 // ============================================================================
-// CHAT
+// JOB CHAT (Job-scoped only, cleaner ↔ manager)
 // ============================================================================
 
-export const chatMessages = mysqlTable(
-  "chat_messages",
+export const jobChat = mysqlTable(
+  "job_chat",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
     jobId: varchar("job_id", { length: 64 }).notNull(),
@@ -261,23 +334,23 @@ export const chatMessages = mysqlTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    jobIdx: index("chat_messages_job_id_idx").on(table.jobId),
-    senderIdx: index("chat_messages_sender_id_idx").on(table.senderId),
+    jobIdx: index("job_chat_job_id_idx").on(table.jobId),
+    senderIdx: index("job_chat_sender_id_idx").on(table.senderId),
   })
 );
 
-export type ChatMessage = typeof chatMessages.$inferSelect;
-export type InsertChatMessage = typeof chatMessages.$inferInsert;
+export type JobChat = typeof jobChat.$inferSelect;
+export type InsertJobChat = typeof jobChat.$inferInsert;
 
 // ============================================================================
-// INVOICES
+// INVOICES (Rolling per cleaner, append-only until submission)
 // ============================================================================
 
 export const invoices = mysqlTable(
   "invoices",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
-    companyId: varchar("company_id", { length: 64 }).notNull(),
+    businessId: varchar("business_id", { length: 64 }).notNull(),
     cleanerId: varchar("cleaner_id", { length: 64 }).notNull(),
     status: invoiceStatusEnum.notNull().default("open"),
     invoiceCycle: invoiceCycleEnum.notNull().default("bi_weekly"),
@@ -292,7 +365,7 @@ export const invoices = mysqlTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
   (table) => ({
-    companyIdx: index("invoices_company_id_idx").on(table.companyId),
+    businessIdx: index("invoices_business_id_idx").on(table.businessId),
     cleanerIdx: index("invoices_cleaner_id_idx").on(table.cleanerId),
     statusIdx: index("invoices_status_idx").on(table.status),
   })
@@ -301,165 +374,247 @@ export const invoices = mysqlTable(
 export type Invoice = typeof invoices.$inferSelect;
 export type InsertInvoice = typeof invoices.$inferInsert;
 
-export const invoiceItems = mysqlTable(
-  "invoice_items",
+// ============================================================================
+// INVOICE LINE ITEMS (Per-job, append-only until invoice submission)
+// ============================================================================
+
+export const invoiceLineItems = mysqlTable(
+  "invoice_line_items",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
     invoiceId: varchar("invoice_id", { length: 64 }).notNull(),
     jobId: varchar("job_id", { length: 64 }).notNull(),
-    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-    adjustedPrice: decimal("adjusted_price", { precision: 10, scale: 2 }), // Manager override
+    price: decimal("price", { precision: 10, scale: 2 }).notNull(), // Original job price
+    adjustedPrice: decimal("adjusted_price", { precision: 10, scale: 2 }), // Manager override (before submission only)
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    invoiceIdx: index("invoice_items_invoice_id_idx").on(table.invoiceId),
-    jobIdx: index("invoice_items_job_id_idx").on(table.jobId),
+    invoiceIdx: index("invoice_line_items_invoice_id_idx").on(table.invoiceId),
+    jobIdx: index("invoice_line_items_job_id_idx").on(table.jobId),
   })
 );
 
-export type InvoiceItem = typeof invoiceItems.$inferSelect;
-export type InsertInvoiceItem = typeof invoiceItems.$inferInsert;
+export type InvoiceLineItem = typeof invoiceLineItems.$inferSelect;
+export type InsertInvoiceLineItem = typeof invoiceLineItems.$inferInsert;
 
 // ============================================================================
-// GUESTY SYNC LOG
+// NOTIFICATIONS
 // ============================================================================
 
-export const guestySyncLog = mysqlTable(
-  "guesty_sync_log",
+export const notifications = mysqlTable(
+  "notifications",
   {
     id: varchar("id", { length: 64 }).primaryKey(),
-    companyId: varchar("company_id", { length: 64 }).notNull(),
+    businessId: varchar("business_id", { length: 64 }).notNull(),
+    userId: varchar("user_id", { length: 64 }).notNull(),
+    type: notificationTypeEnum.notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    message: text("message"),
+    relatedJobId: varchar("related_job_id", { length: 64 }), // Link to job if applicable
+    isRead: boolean("is_read").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    businessIdx: index("notifications_business_id_idx").on(table.businessId),
+    userIdx: index("notifications_user_id_idx").on(table.userId),
+    jobIdx: index("notifications_related_job_id_idx").on(table.relatedJobId),
+  })
+);
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;
+
+// ============================================================================
+// PMS SYNC LOG (Track sync status for each platform)
+// ============================================================================
+
+export const pmsSyncLog = mysqlTable(
+  "pms_sync_log",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    businessId: varchar("business_id", { length: 64 }).notNull(),
+    platform: platformEnum.notNull(),
     lastSyncAt: timestamp("last_sync_at").notNull().defaultNow(),
-    bookingsCount: int("bookings_count").default(0),
-    jobsCreatedCount: int("jobs_created_count").default(0),
-    jobsUpdatedCount: int("jobs_updated_count").default(0),
-    syncStatus: varchar("sync_status", { length: 50 }).default("success"), // "success", "error", "pending"
+    bookingsCount: int("bookings_count").notNull().default(0),
+    jobsCreatedCount: int("jobs_created_count").notNull().default(0),
+    jobsUpdatedCount: int("jobs_updated_count").notNull().default(0),
+    syncStatus: varchar("sync_status", { length: 50 }).notNull().default("success"), // "success", "error", "pending"
     errorMessage: text("error_message"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => ({
-    companyIdx: index("guesty_sync_log_company_id_idx").on(table.companyId),
+    businessIdx: index("pms_sync_log_business_id_idx").on(table.businessId),
+    platformIdx: index("pms_sync_log_platform_idx").on(table.platform),
   })
 );
 
-export type GuestySyncLog = typeof guestySyncLog.$inferSelect;
-export type InsertGuestySyncLog = typeof guestySyncLog.$inferInsert;
+export type PmsSyncLog = typeof pmsSyncLog.$inferSelect;
+export type InsertPmsSyncLog = typeof pmsSyncLog.$inferInsert;
 
 // ============================================================================
 // RELATIONS
 // ============================================================================
 
-export const usersRelations = relations(users, ({ many, one }) => ({
+export const businessesRelations = relations(businesses, ({ many }) => ({
+  users: many(users),
   properties: many(properties),
-  jobs: many(jobs),
+  bookings: many(bookings),
+  cleaningJobs: many(cleaningJobs),
   invoices: many(invoices),
-  chatMessages: many(chatMessages),
-  manager: one(users, {
-    fields: [users.managerId],
-    references: [users.id],
-  }),
+  notifications: many(notifications),
+  pmsSyncLogs: many(pmsSyncLog),
 }));
 
-export const propertiesRelations = relations(properties, ({ many, one }) => ({
-  jobs: many(jobs),
+export const usersRelations = relations(users, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [users.businessId],
+    references: [businesses.id],
+  }),
+  assignedJobs: many(cleaningJobs),
+  sentMessages: many(jobChat),
+  invoices: many(invoices),
+  notifications: many(notifications),
+}));
+
+export const propertiesRelations = relations(properties, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [properties.businessId],
+    references: [businesses.id],
+  }),
+  bookings: many(bookings),
+  cleaningJobs: many(cleaningJobs),
   inventoryItems: many(inventoryItems),
-  manager: one(users, {
-    fields: [properties.managerId],
-    references: [users.id],
-  }),
 }));
 
-export const inventoryItemsRelations = relations(inventoryItems, ({ many, one }) => ({
+export const bookingsRelations = relations(bookings, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [bookings.businessId],
+    references: [businesses.id],
+  }),
+  property: one(properties, {
+    fields: [bookings.propertyId],
+    references: [properties.id],
+  }),
+  cleaningJob: one(cleaningJobs),
+}));
+
+export const cleaningJobsRelations = relations(cleaningJobs, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [cleaningJobs.businessId],
+    references: [businesses.id],
+  }),
+  booking: one(bookings, {
+    fields: [cleaningJobs.bookingId],
+    references: [bookings.id],
+  }),
+  property: one(properties, {
+    fields: [cleaningJobs.propertyId],
+    references: [properties.id],
+  }),
+  assignedCleaner: one(users, {
+    fields: [cleaningJobs.assignedCleanerId],
+    references: [users.id],
+  }),
+  media: many(media),
+  damageReports: many(damageReports),
+  inventoryLogs: many(inventoryLogs),
+  chatMessages: many(jobChat),
+  invoiceLineItems: many(invoiceLineItems),
+}));
+
+export const inventoryItemsRelations = relations(inventoryItems, ({ one, many }) => ({
   property: one(properties, {
     fields: [inventoryItems.propertyId],
     references: [properties.id],
   }),
-  jobLogs: many(jobInventoryLog),
+  logs: many(inventoryLogs),
 }));
 
-export const jobsRelations = relations(jobs, ({ many, one }) => ({
-  property: one(properties, {
-    fields: [jobs.propertyId],
-    references: [properties.id],
-  }),
-  manager: one(users, {
-    fields: [jobs.managerId],
-    references: [users.id],
-  }),
-  cleaner: one(users, {
-    fields: [jobs.cleanerId],
-    references: [users.id],
-  }),
-  photos: many(photos),
-  damages: many(damages),
-  inventoryLogs: many(jobInventoryLog),
-  chatMessages: many(chatMessages),
-  invoiceItems: many(invoiceItems),
-}));
-
-export const jobInventoryLogRelations = relations(jobInventoryLog, ({ one }) => ({
-  job: one(jobs, {
-    fields: [jobInventoryLog.jobId],
-    references: [jobs.id],
+export const inventoryLogsRelations = relations(inventoryLogs, ({ one }) => ({
+  job: one(cleaningJobs, {
+    fields: [inventoryLogs.jobId],
+    references: [cleaningJobs.id],
   }),
   inventoryItem: one(inventoryItems, {
-    fields: [jobInventoryLog.inventoryItemId],
+    fields: [inventoryLogs.inventoryItemId],
     references: [inventoryItems.id],
   }),
 }));
 
-export const photosRelations = relations(photos, ({ one }) => ({
-  job: one(jobs, {
-    fields: [photos.jobId],
-    references: [jobs.id],
+export const mediaRelations = relations(media, ({ one }) => ({
+  job: one(cleaningJobs, {
+    fields: [media.jobId],
+    references: [cleaningJobs.id],
   }),
 }));
 
-export const damagesRelations = relations(damages, ({ many, one }) => ({
-  job: one(jobs, {
-    fields: [damages.jobId],
-    references: [jobs.id],
+export const damageReportsRelations = relations(damageReports, ({ one, many }) => ({
+  job: one(cleaningJobs, {
+    fields: [damageReports.jobId],
+    references: [cleaningJobs.id],
   }),
   photos: many(damagePhotos),
 }));
 
 export const damagePhotosRelations = relations(damagePhotos, ({ one }) => ({
-  damage: one(damages, {
-    fields: [damagePhotos.damageId],
-    references: [damages.id],
+  damageReport: one(damageReports, {
+    fields: [damagePhotos.damageReportId],
+    references: [damageReports.id],
   }),
 }));
 
-export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
-  job: one(jobs, {
-    fields: [chatMessages.jobId],
-    references: [jobs.id],
+export const jobChatRelations = relations(jobChat, ({ one }) => ({
+  job: one(cleaningJobs, {
+    fields: [jobChat.jobId],
+    references: [cleaningJobs.id],
   }),
   sender: one(users, {
-    fields: [chatMessages.senderId],
+    fields: [jobChat.senderId],
     references: [users.id],
   }),
 }));
 
-export const invoicesRelations = relations(invoices, ({ many, one }) => ({
+export const invoicesRelations = relations(invoices, ({ one, many }) => ({
+  business: one(businesses, {
+    fields: [invoices.businessId],
+    references: [businesses.id],
+  }),
   cleaner: one(users, {
     fields: [invoices.cleanerId],
     references: [users.id],
   }),
-  items: many(invoiceItems),
+  lineItems: many(invoiceLineItems),
 }));
 
-export const invoiceItemsRelations = relations(invoiceItems, ({ one }) => ({
+export const invoiceLineItemsRelations = relations(invoiceLineItems, ({ one }) => ({
   invoice: one(invoices, {
-    fields: [invoiceItems.invoiceId],
+    fields: [invoiceLineItems.invoiceId],
     references: [invoices.id],
   }),
-  job: one(jobs, {
-    fields: [invoiceItems.jobId],
-    references: [jobs.id],
+  job: one(cleaningJobs, {
+    fields: [invoiceLineItems.jobId],
+    references: [cleaningJobs.id],
   }),
 }));
 
-export const guestySyncLogRelations = relations(guestySyncLog, ({ one }) => ({
-  // No direct relations needed
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  business: one(businesses, {
+    fields: [notifications.businessId],
+    references: [businesses.id],
+  }),
+  user: one(users, {
+    fields: [notifications.userId],
+    references: [users.id],
+  }),
+  relatedJob: one(cleaningJobs, {
+    fields: [notifications.relatedJobId],
+    references: [cleaningJobs.id],
+  }),
+}));
+
+export const pmsSyncLogRelations = relations(pmsSyncLog, ({ one }) => ({
+  business: one(businesses, {
+    fields: [pmsSyncLog.businessId],
+    references: [businesses.id],
+  }),
 }));

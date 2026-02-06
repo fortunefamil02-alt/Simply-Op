@@ -21,10 +21,12 @@ async function syncUser(userInfo: {
   }
 
   const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const businessId = `biz_${Date.now()}`; // Default business for new users
   const lastSignedIn = new Date();
   await upsertUser({
     id: userId,
     email: userInfo.email ?? "",
+    businessId,
     passwordHash: "",
     firstName: userInfo.name?.split(" ")[0] || null,
     lastName: userInfo.name?.split(" ").slice(1).join(" ") || null,

@@ -149,3 +149,19 @@
 - ✅ Manager can override job completion (Super Manager only)
 - ✅ Offline-first architecture (sync when online)
 - ✅ Role-based access control (strict permissions)
+
+
+## Phase 5B: Event-Driven Notifications & Job Chat (COMPLETED)
+- [x] Design event-driven notification architecture
+- [x] Create notification types (push, in-app, silent)
+- [x] Implement role-based notification delivery rules
+- [x] Create job-scoped chat system (cleaner ↔ manager only)
+- [x] Implement message notifications
+- [x] Create offline notification queue with retry logic
+- [x] Implement critical alert system (bypass quiet hours)
+- [x] Add chat locking on job completion
+- [x] Create event emission helpers for job lifecycle
+- [x] Implement job event flows (available, assigned, accepted, started, completed, cancelled, reassigned)
+- [x] Implement critical alert events (damage, cleaner removed, override request, GPS mismatch, access denied)
+- [x] Implement booking and invoice events
+- [x] Document event-driven architecture and notification flows

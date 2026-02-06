@@ -37,6 +37,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     const values: InsertUser = {
       id: user.id || `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       email: user.email,
+      businessId: user.businessId || `biz_${Date.now()}`,
       passwordHash: user.passwordHash || "",
     };
 
@@ -63,14 +64,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.role = "cleaner";
     }
 
-    if (user.companyId !== undefined) {
-      values.companyId = user.companyId;
-      updateSet.companyId = user.companyId;
-    }
-
-    if (user.managerId !== undefined) {
-      values.managerId = user.managerId;
-      updateSet.managerId = user.managerId;
+    if (user.businessId !== undefined) {
+      values.businessId = user.businessId;
+      updateSet.businessId = user.businessId;
     }
 
     if (user.isActive !== undefined) {
