@@ -25,6 +25,7 @@ import {
   invoices,
 } from "../../drizzle/schema";
 import { validateGPSRadius, hasReasonablePrecision } from "../utils/gps-validation";
+import { media } from "../../drizzle/schema";
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -402,46 +403,9 @@ export const jobsRouter = router({
           });
         }
 
-        // 4. Server-side GPS validation
-        // Get property coordinates for validation
-        const property = await tx.query.properties.findFirst({
-          where: eq(properties.id, job.propertyId),
-          columns: {
-            latitude: true,
-            longitude: true,
-          },
-        });
-
-        if (!property || !property.latitude || !property.longitude) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Property coordinates not available for GPS validation",
-          });
-        }
-
-        // Validate GPS coordinates have reasonable precision (prevent low-precision spoofing)
-        if (!hasReasonablePrecision(input.gpsLat, input.gpsLng)) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "GPS coordinates lack sufficient precision. Please use a device with better GPS accuracy.",
-          });
-        }
-
-        // Validate GPS is within 50m of property
-        const gpsValidation = validateGPSRadius(
-          property.latitude,
-          property.longitude,
-          input.gpsLat,
-          input.gpsLng,
-          50 // 50 meter radius
-        );
-
-        if (!gpsValidation.valid) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: gpsValidation.error || "GPS location is too far from property",
-          });
-        }
+        // 3. Store GPS passively (no validation at start)
+        // GPS validation happens only at completion
+        // Start location may be noisy, so we don't enforce it
 
         // 4. Update job atomically
         const updated = await tx
@@ -537,7 +501,22 @@ export const jobsRouter = router({
           });
         }
 
-        // 4. Server-side GPS validation for start
+        // 4. Require at least one photo before completion
+        const jobPhotos = await tx.query.media.findMany({
+          where: and(
+            eq(media.jobId, input.jobId),
+            eq(media.type, "photo")
+          ),
+        });
+
+        if (jobPhotos.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "At least one photo is required before completing the job. Please upload photos of the cleaned property.",
+          });
+        }
+
+        // 5. Server-side GPS validation for completion
         // Get property coordinates for validation
         const property = await tx.query.properties.findFirst({
           where: eq(properties.id, job.propertyId),
@@ -578,7 +557,7 @@ export const jobsRouter = router({
           });
         }
 
-        // 5. Update job atomically (GPS already validated)
+        // 6. Update job atomically (photos and GPS already validated)
         const updated = await tx
           .update(cleaningJobs)
           .set({
