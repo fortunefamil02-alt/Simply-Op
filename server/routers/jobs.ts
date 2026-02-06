@@ -596,6 +596,37 @@ export const jobsRouter = router({
         }
 
         // 8. Add job to rolling invoice (atomic with job completion)
+        // Get cleaner's pay type (with job override support)
+        const cleaner = await tx.query.users.findFirst({
+          where: eq(users.id, ctx.user.id),
+          columns: { payType: true },
+        });
+
+        const cleanerPayType = cleaner?.payType || "per_job";
+        const jobPayTypeOverride = job.payTypeOverride;
+        const effectivePayType = jobPayTypeOverride || cleanerPayType;
+
+        // Calculate line item amount based on pay type
+        let lineItemAmount: number;
+        if (effectivePayType === "hourly") {
+          // Calculate duration from job start to completion
+          const startTime = job.startedAt?.getTime() || new Date().getTime();
+          const endTime = new Date().getTime();
+          const durationMs = endTime - startTime;
+          const durationMinutes = Math.round(durationMs / (1000 * 60));
+
+          // Round to nearest 30 minutes
+          const roundedMinutes = Math.round(durationMinutes / 30) * 30;
+          const roundedHours = roundedMinutes / 60;
+
+          // TODO: Get hourly rate from cleaner profile or business settings
+          // For now, use job.price as hourly rate and multiply by hours
+          lineItemAmount = parseFloat(job.price.toString()) * roundedHours;
+        } else {
+          // Per-job: use job price directly
+          lineItemAmount = parseFloat(job.price.toString());
+        }
+
         // Get or create open invoice for this cleaner
         let invoice = await tx.query.invoices.findFirst({
           where: and(
@@ -613,10 +644,11 @@ export const jobsRouter = router({
             businessId: ctx.user.businessId,
             cleanerId: ctx.user.id,
             status: "open" as const,
-            cycle: "bi_weekly" as const, // Default cycle (TODO: use cleaner's preference)
+            invoiceCycle: "bi_weekly" as const, // Default cycle (TODO: use cleaner's preference)
+            payType: effectivePayType as "hourly" | "per_job", // Set pay type at invoice creation
             periodStart: now,
             periodEnd: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000), // 2 weeks
-            totalAmount: job.price.toString(),
+            totalAmount: lineItemAmount.toString(),
             submittedAt: null,
             approvedAt: null,
             paidAt: null,
@@ -642,7 +674,7 @@ export const jobsRouter = router({
             id: `ili_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             invoiceId: invoice.id,
             jobId: input.jobId,
-            price: job.price.toString(),
+            price: lineItemAmount.toString(),
             createdAt: new Date(),
           });
 
@@ -651,7 +683,7 @@ export const jobsRouter = router({
             .update(invoices)
             .set({
               totalAmount: (
-                parseFloat(invoice.totalAmount) + parseFloat(job.price.toString())
+                parseFloat(invoice.totalAmount) + lineItemAmount
               ).toString(),
               updatedAt: new Date(),
             })

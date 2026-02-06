@@ -11,6 +11,7 @@ export interface JobCardProps {
   hasPets: boolean;
   price: number;
   status: "available" | "accepted" | "in_progress" | "completed" | "needs_review";
+  payType?: "hourly" | "per_job";
   onPress?: () => void;
   onAccept?: () => void;
   isAccepting?: boolean;
@@ -25,6 +26,7 @@ export function JobCard({
   hasPets,
   price,
   status,
+  payType = "per_job",
   onPress,
   onAccept,
   isAccepting = false,
@@ -99,10 +101,12 @@ export function JobCard({
           </Text>
         </View>
 
-        <View style={styles.detailItem}>
-          <Text style={[styles.detailLabel, { color: colors.muted }]}>Price</Text>
-          <Text style={[styles.detailValue, { color: colors.foreground }]}>${price}</Text>
-        </View>
+        {payType === "per_job" && (
+          <View style={styles.detailItem}>
+            <Text style={[styles.detailLabel, { color: colors.muted }]}>Price</Text>
+            <Text style={[styles.detailValue, { color: colors.foreground }]}>${price}</Text>
+          </View>
+        )}
       </View>
 
       {status === "available" && onAccept && (
