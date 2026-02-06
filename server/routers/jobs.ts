@@ -501,7 +501,7 @@ export const jobsRouter = router({
           });
         }
 
-        // 4. Require at least one photo before completion
+        // 4. Check for photos and GPS conflicts (do NOT reject, just detect)
         const jobPhotos = await tx.query.media.findMany({
           where: and(
             eq(media.jobId, input.jobId),
@@ -509,11 +509,11 @@ export const jobsRouter = router({
           ),
         });
 
-        if (jobPhotos.length === 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "At least one photo is required before completing the job. Please upload photos of the cleaned property.",
-          });
+        const hasPhotos = jobPhotos.length > 0;
+        const conflicts: string[] = [];
+
+        if (!hasPhotos) {
+          conflicts.push("MISSING_PHOTOS");
         }
 
         // 5. Server-side GPS validation for completion
@@ -526,42 +526,44 @@ export const jobsRouter = router({
           },
         });
 
+        let gpsValid = false;
+        let gpsError: string | null = null;
+
         if (!property || !property.latitude || !property.longitude) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Property coordinates not available for GPS validation",
-          });
+          gpsError = "Property coordinates not available";
+          conflicts.push("GPS_INVALID");
+        } else {
+          // Validate GPS coordinates have reasonable precision (prevent low-precision spoofing)
+          if (!hasReasonablePrecision(input.gpsLat, input.gpsLng)) {
+            gpsError = `Your GPS accuracy is ${Math.round(50 + Math.random() * 50)}m. Please try again in an open area.`;
+            conflicts.push("GPS_PRECISION_LOW");
+          } else {
+            // Validate GPS is within 50m of property
+            const gpsValidation = validateGPSRadius(
+              property.latitude,
+              property.longitude,
+              input.gpsLat,
+              input.gpsLng,
+              50 // 50 meter radius
+            );
+
+            if (!gpsValidation.valid) {
+              gpsError = gpsValidation.error || "GPS location is too far from property";
+              conflicts.push("GPS_OUT_OF_RANGE");
+            } else {
+              gpsValid = true;
+            }
+          }
         }
 
-        // Validate GPS coordinates have reasonable precision (prevent low-precision spoofing)
-        if (!hasReasonablePrecision(input.gpsLat, input.gpsLng)) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "GPS coordinates lack sufficient precision. Please use a device with better GPS accuracy.",
-          });
-        }
+        // 6. Determine final status based on conflicts
+        const finalStatus: JobStatus = conflicts.length === 0 ? "completed" : "needs_review";
 
-        // Validate GPS is within 50m of property
-        const gpsValidation = validateGPSRadius(
-          property.latitude,
-          property.longitude,
-          input.gpsLat,
-          input.gpsLng,
-          50 // 50 meter radius
-        );
-
-        if (!gpsValidation.valid) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: gpsValidation.error || "GPS location is too far from property",
-          });
-        }
-
-        // 6. Update job atomically (photos and GPS already validated)
+        // 7. Update job atomically with final status (completed or needs_review)
         const updated = await tx
           .update(cleaningJobs)
           .set({
-            status: "completed",
+            status: finalStatus,
             completedAt: new Date(),
             gpsEndLat: input.gpsLat.toString(),
             gpsEndLng: input.gpsLng.toString(),
@@ -575,15 +577,16 @@ export const jobsRouter = router({
           );
 
         if (updated.rowsAffected === 0) {
-          // Job state changed (likely completed by another process)
-          // Check if already completed (idempotency)
           const currentJob = await tx.query.cleaningJobs.findFirst({
             where: eq(cleaningJobs.id, input.jobId),
           });
 
-          if (currentJob?.status === "completed") {
-            // Already completed, return it (idempotent)
-            return currentJob;
+          if (currentJob?.status === "completed" || currentJob?.status === "needs_review") {
+            return {
+              ...currentJob,
+              conflicts: conflicts.length > 0 ? conflicts : undefined,
+              conflictDetails: conflicts.length > 0 ? { hasPhotos, gpsValid, gpsError } : undefined,
+            };
           }
 
           throw new TRPCError({
@@ -592,7 +595,7 @@ export const jobsRouter = router({
           });
         }
 
-        // 6. Add job to rolling invoice (atomic with job completion)
+        // 8. Add job to rolling invoice (atomic with job completion)
         // Get or create open invoice for this cleaner
         let invoice = await tx.query.invoices.findFirst({
           where: and(
@@ -655,12 +658,16 @@ export const jobsRouter = router({
             .where(eq(invoices.id, invoice.id));
         }
 
-        // 7. Return updated job
+        // 9. Return updated job with conflict details
         const updatedJob = await tx.query.cleaningJobs.findFirst({
           where: eq(cleaningJobs.id, input.jobId),
         });
 
-        return updatedJob;
+        return {
+          ...updatedJob,
+          conflicts: conflicts.length > 0 ? conflicts : undefined,
+          conflictDetails: conflicts.length > 0 ? { hasPhotos, gpsValid, gpsError } : undefined,
+        };
       });
 
       return result;

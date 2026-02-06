@@ -1,16 +1,16 @@
-import { useState, useEffect } from "react";
-import { View, Text, ScrollView, Pressable, ActivityIndicator, StyleSheet, Alert } from "react-native";
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Alert } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
+import { useState, useEffect } from "react";
 
 interface Job {
   id: string;
   propertyName: string;
   propertyAddress: string;
-  cleaningDate: Date;
+  cleaningDate: string;
   guestCount: number;
   hasPets: boolean;
   price: number;
@@ -18,15 +18,24 @@ interface Job {
   propertyId: string;
   bookingId: string;
   instructions?: string;
-  propertyLat?: number;
-  propertyLng?: number;
+  propertyLat: number;
+  propertyLng: number;
   gpsStartLat?: number;
   gpsStartLng?: number;
   gpsEndLat?: number;
   gpsEndLng?: number;
-  startedAt?: Date;
-  completedAt?: Date;
-  acceptedAt?: Date;
+  startedAt?: string;
+  completedAt?: string;
+  acceptedAt?: string;
+  hasPhotos?: boolean;
+  photoCount?: number;
+}
+
+interface Conflict {
+  type: "gps_invalid" | "missing_photos" | "access_denied" | "booking_conflict";
+  severity: "error" | "warning";
+  message: string;
+  details?: string;
 }
 
 export default function JobDetailScreen() {
@@ -43,6 +52,7 @@ export default function JobDetailScreen() {
     "not_checked"
   );
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
+  const [conflicts, setConflicts] = useState<Conflict[]>([]);
 
   useEffect(() => {
     loadJobDetail();
@@ -71,13 +81,7 @@ export default function JobDetailScreen() {
         const jobs = JSON.parse(jobsData);
         const foundJob = jobs.find((j: any) => j.id === jobId);
         if (foundJob) {
-          setJob({
-            ...foundJob,
-            cleaningDate: new Date(foundJob.cleaningDate),
-            startedAt: foundJob.startedAt ? new Date(foundJob.startedAt) : undefined,
-            completedAt: foundJob.completedAt ? new Date(foundJob.completedAt) : undefined,
-            acceptedAt: foundJob.acceptedAt ? new Date(foundJob.acceptedAt) : undefined,
-          });
+          setJob(foundJob);
         }
       }
 
@@ -95,16 +99,16 @@ export default function JobDetailScreen() {
     }
   };
 
-  const checkGPS = async () => {
+  const checkGPS = async (): Promise<boolean> => {
     try {
       setGpsStatus("checking");
 
       // Request location permission
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setError("Location permission denied");
+        setError("Location permission denied. Please enable location access in settings.");
         setGpsStatus("invalid");
-        return;
+        return false;
       }
 
       // Get current location
@@ -113,31 +117,38 @@ export default function JobDetailScreen() {
       });
       setCurrentLocation(location);
 
-      // TODO: Get property coordinates from job data
-      // For now, using mock coordinates (San Francisco)
-      const propertyLat = 37.7749;
-      const propertyLng = -122.4194;
+      if (!job) return false;
 
       // Calculate distance (Haversine formula)
       const distance = calculateDistance(
         location.coords.latitude,
         location.coords.longitude,
-        propertyLat,
-        propertyLng
+        job.propertyLat,
+        job.propertyLng
       );
+
+      // Check precision (at least 4 decimal places = ~11m accuracy)
+      const precision = location.coords.accuracy || 0;
+      if (precision > 50) {
+        setError(
+          `GPS precision too low (${Math.round(precision)}m). Please try again in an open area.`
+        );
+        setGpsStatus("invalid");
+        return false;
+      }
 
       // Check if within 50 meters
       if (distance <= 50) {
         setGpsStatus("valid");
         return true;
       } else {
+        setError(`You are ${Math.round(distance)}m away from the property. Get closer to complete.`);
         setGpsStatus("invalid");
-        setError(`You are ${Math.round(distance)}m away from the property`);
         return false;
       }
     } catch (err) {
       console.error("GPS check failed:", err);
-      setError("Failed to check GPS location");
+      setError("Failed to check GPS location. Please try again.");
       setGpsStatus("invalid");
       return false;
     }
@@ -157,9 +168,44 @@ export default function JobDetailScreen() {
     return R * c;
   };
 
+  const handleAcceptJob = async () => {
+    try {
+      setIsProcessing(true);
+      setError(null);
+
+      if (!job) return;
+
+      const updatedJob: Job = {
+        ...job,
+        status: "accepted" as const,
+        acceptedAt: new Date().toISOString(),
+      };
+      setJob(updatedJob);
+
+      // Update cache
+      const jobsData = await AsyncStorage.getItem("jobs");
+      if (jobsData) {
+        const jobs = JSON.parse(jobsData);
+        const updatedJobs = jobs.map((j: any) => (j.id === jobId ? updatedJob : j));
+        await AsyncStorage.setItem("jobs", JSON.stringify(updatedJobs));
+      }
+
+      // TODO: Call API to accept job
+      // await fetch(`/api/jobs/${jobId}/accept`, { method: "POST" });
+
+      Alert.alert("Success", "Job accepted! You can now start the cleaning.");
+    } catch (err) {
+      console.error("Failed to accept job:", err);
+      setError("Failed to accept job. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleStartJob = async () => {
     try {
       setIsProcessing(true);
+      setError(null);
 
       // Verify GPS location
       const isValidLocation = await checkGPS();
@@ -168,28 +214,29 @@ export default function JobDetailScreen() {
         return;
       }
 
-      // Update job status to in_progress
-      if (job) {
-        const updatedJob = {
-          ...job,
-          status: "in_progress" as const,
-          startedAt: new Date(),
-          gpsStartLat: currentLocation?.coords.latitude,
-          gpsStartLng: currentLocation?.coords.longitude,
-        };
-        setJob(updatedJob);
+      if (!job || !currentLocation) return;
 
-        // Update cache
-        const jobsData = await AsyncStorage.getItem("jobs");
-        if (jobsData) {
-          const jobs = JSON.parse(jobsData);
-          const updatedJobs = jobs.map((j: any) => (j.id === jobId ? updatedJob : j));
-          await AsyncStorage.setItem("jobs", JSON.stringify(updatedJobs));
-        }
+      const updatedJob: Job = {
+        ...job,
+        status: "in_progress" as const,
+        startedAt: new Date().toISOString(),
+        gpsStartLat: currentLocation.coords.latitude,
+        gpsStartLng: currentLocation.coords.longitude,
+      };
+      setJob(updatedJob);
 
-        // TODO: Call API to update job status
-        // await fetch(`/api/jobs/${jobId}/start`, { method: "POST" });
+      // Update cache
+      const jobsData = await AsyncStorage.getItem("jobs");
+      if (jobsData) {
+        const jobs = JSON.parse(jobsData);
+        const updatedJobs = jobs.map((j: any) => (j.id === jobId ? updatedJob : j));
+        await AsyncStorage.setItem("jobs", JSON.stringify(updatedJobs));
       }
+
+      // TODO: Call API to start job
+      // await fetch(`/api/jobs/${jobId}/start`, { method: "POST" });
+
+      Alert.alert("Success", "Job started! Timer is now running.");
     } catch (err) {
       console.error("Failed to start job:", err);
       setError("Failed to start job. Please try again.");
@@ -198,40 +245,78 @@ export default function JobDetailScreen() {
     }
   };
 
+  const detectConflicts = (): Conflict[] => {
+    const detectedConflicts: Conflict[] = [];
+
+    if (!job) return detectedConflicts;
+
+    // Check GPS validity (for completion)
+    if (gpsStatus === "invalid") {
+      detectedConflicts.push({
+        type: "gps_invalid",
+        severity: "error",
+        message: "GPS location invalid",
+        details: error || "You are too far from the property",
+      });
+    }
+
+    // Check for required photos
+    if (!job.hasPhotos || (job.photoCount || 0) === 0) {
+      detectedConflicts.push({
+        type: "missing_photos",
+        severity: "error",
+        message: "No photos uploaded",
+        details: "Upload at least 1 photo before completing the job",
+      });
+    }
+
+    return detectedConflicts;
+  };
+
   const handleCompleteJob = async () => {
     try {
       setIsProcessing(true);
+      setError(null);
 
       // Verify GPS location at completion
       const isValidLocation = await checkGPS();
-      if (!isValidLocation) {
-        setIsProcessing(false);
-        return;
+
+      if (!job || !currentLocation) return;
+
+      // Detect conflicts
+      const detectedConflicts = detectConflicts();
+
+      // If conflicts exist, move to needs_review instead of completed
+      const finalStatus: "completed" | "needs_review" = detectedConflicts.length > 0 ? "needs_review" : "completed";
+
+      const updatedJob: Job = {
+        ...job,
+        status: finalStatus,
+        completedAt: new Date().toISOString(),
+        gpsEndLat: currentLocation.coords.latitude,
+        gpsEndLng: currentLocation.coords.longitude,
+      };
+      setJob(updatedJob);
+      setConflicts(detectedConflicts);
+
+      // Update cache
+      const jobsData = await AsyncStorage.getItem("jobs");
+      if (jobsData) {
+        const jobs = JSON.parse(jobsData);
+        const updatedJobs = jobs.map((j: any) => (j.id === jobId ? updatedJob : j));
+        await AsyncStorage.setItem("jobs", JSON.stringify(updatedJobs));
       }
 
-      // TODO: Check if required photos are uploaded
-      // For now, just complete the job
-      if (job) {
-        const updatedJob = {
-          ...job,
-          status: "completed" as const,
-          completedAt: new Date(),
-          gpsEndLat: currentLocation?.coords.latitude,
-          gpsEndLng: currentLocation?.coords.longitude,
-        };
-        setJob(updatedJob);
+      // TODO: Call API to complete job
+      // await fetch(`/api/jobs/${jobId}/complete`, { method: "POST" });
 
-        // Update cache
-        const jobsData = await AsyncStorage.getItem("jobs");
-        if (jobsData) {
-          const jobs = JSON.parse(jobsData);
-          const updatedJobs = jobs.map((j: any) => (j.id === jobId ? updatedJob : j));
-          await AsyncStorage.setItem("jobs", JSON.stringify(updatedJobs));
-        }
-
-        // TODO: Call API to complete job
-        // await fetch(`/api/jobs/${jobId}/complete`, { method: "POST" });
-
+      if (detectedConflicts.length > 0) {
+        Alert.alert(
+          "Review Required",
+          "Your job has conflicts that need manager review. A manager will contact you shortly.",
+          [{ text: "OK", onPress: () => router.back() }]
+        );
+      } else {
         Alert.alert("Success", "Job completed successfully!", [
           {
             text: "OK",
@@ -258,7 +343,7 @@ export default function JobDetailScreen() {
     return (
       <ScreenContainer className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[{ color: colors.muted, marginTop: 12 }]}>Loading job details...</Text>
+        <Text style={{ color: colors.muted, marginTop: 12 }}>Loading job details...</Text>
       </ScreenContainer>
     );
   }
@@ -266,7 +351,7 @@ export default function JobDetailScreen() {
   if (!job) {
     return (
       <ScreenContainer className="flex-1 items-center justify-center">
-        <Text style={[{ color: colors.error, fontSize: 16, fontWeight: "600" }]}>
+        <Text style={{ color: colors.error, fontSize: 16, fontWeight: "600" }}>
           Job not found
         </Text>
         <Pressable
@@ -300,24 +385,14 @@ export default function JobDetailScreen() {
 
   return (
     <ScreenContainer className="flex-1 bg-background">
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-          >
-            <Text style={[{ color: colors.primary, fontSize: 16, fontWeight: "600" }]}>← Back</Text>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Pressable onPress={() => router.back()} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}>
+            <Text style={{ color: colors.primary, fontSize: 16, fontWeight: "600" }}>← Back</Text>
           </Pressable>
-          <View
-            style={[
-              styles.statusBadge,
-              {
-                backgroundColor: statusInfo.bgColor,
-              },
-            ]}
-          >
-            <Text style={[styles.statusText, { color: statusInfo.textColor }]}>
+          <View style={{ backgroundColor: statusInfo.bgColor, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}>
+            <Text style={{ color: statusInfo.textColor, fontWeight: "600", fontSize: 14 }}>
               {statusInfo.label}
             </Text>
           </View>
@@ -325,48 +400,82 @@ export default function JobDetailScreen() {
 
         {/* Error Message */}
         {error && (
-          <View style={[styles.errorBanner, { backgroundColor: colors.error }]}>
-            <Text style={[styles.errorText, { color: "#ffffff" }]}>{error}</Text>
+          <View style={{ backgroundColor: colors.error, marginHorizontal: 16, marginVertical: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 6 }}>
+            <Text style={{ color: "#ffffff", fontSize: 14 }}>{error}</Text>
+          </View>
+        )}
+
+        {/* Conflicts */}
+        {conflicts.length > 0 && (
+          <View style={{ marginHorizontal: 16, marginVertical: 8 }}>
+            <Text style={{ color: colors.foreground, fontWeight: "600", marginBottom: 8 }}>
+              ⚠️ Review Required
+            </Text>
+            {conflicts.map((conflict, idx) => (
+              <View
+                key={idx}
+                style={{
+                  backgroundColor: colors.surface,
+                  borderLeftWidth: 4,
+                  borderLeftColor: conflict.severity === "error" ? colors.error : colors.warning,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderRadius: 6,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ color: colors.foreground, fontWeight: "600", marginBottom: 4 }}>
+                  {conflict.message}
+                </Text>
+                {conflict.details && (
+                  <Text style={{ color: colors.muted, fontSize: 13 }}>{conflict.details}</Text>
+                )}
+              </View>
+            ))}
           </View>
         )}
 
         {/* Property Info */}
-        <View style={[styles.section, { borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Property</Text>
-          <Text style={[styles.propertyName, { color: colors.foreground }]}>{job.propertyName}</Text>
-          <Text style={[styles.address, { color: colors.muted }]}>{job.propertyAddress}</Text>
+        <View style={{ marginHorizontal: 16, marginVertical: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 16, marginBottom: 4 }}>
+            {job.propertyName}
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: 14 }}>{job.propertyAddress}</Text>
         </View>
 
         {/* Job Details */}
-        <View style={[styles.section, { borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Details</Text>
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: colors.muted }]}>Date</Text>
-            <Text style={[styles.detailValue, { color: colors.foreground }]}>
-              {job.cleaningDate.toLocaleDateString("en-US", {
+        <View style={{ marginHorizontal: 16, marginVertical: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 14, marginBottom: 8 }}>
+            Details
+          </Text>
+          <View style={{ marginBottom: 8, flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Date</Text>
+            <Text style={{ color: colors.foreground, fontWeight: "500" }}>
+              {new Date(job.cleaningDate).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
-                year: "numeric",
               })}
             </Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: colors.muted }]}>Guests</Text>
-            <Text style={[styles.detailValue, { color: colors.foreground }]}>
+          <View style={{ marginBottom: 8, flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Guests</Text>
+            <Text style={{ color: colors.foreground, fontWeight: "500" }}>
               {job.guestCount} {job.hasPets ? "🐾" : ""}
             </Text>
           </View>
-          <View style={styles.detailRow}>
-            <Text style={[styles.detailLabel, { color: colors.muted }]}>Price</Text>
-            <Text style={[styles.detailValue, { color: colors.foreground }]}>${job.price}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>Price</Text>
+            <Text style={{ color: colors.foreground, fontWeight: "600" }}>${job.price}</Text>
           </View>
         </View>
 
         {/* Instructions */}
         {job.instructions && (
-          <View style={[styles.section, { borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Instructions</Text>
-            <Text style={[styles.instructionText, { color: colors.foreground }]}>
+          <View style={{ marginHorizontal: 16, marginVertical: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 14, marginBottom: 8 }}>
+              Instructions
+            </Text>
+            <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 18 }}>
               {job.instructions}
             </Text>
           </View>
@@ -374,194 +483,127 @@ export default function JobDetailScreen() {
 
         {/* Timer (In Progress) */}
         {job.status === "in_progress" && (
-          <View style={[styles.section, { borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Elapsed Time</Text>
-            <Text style={[styles.timerText, { color: colors.primary }]}>{formatTime(elapsedTime)}</Text>
+          <View style={{ marginHorizontal: 16, marginVertical: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 14, marginBottom: 8 }}>
+              Elapsed Time
+            </Text>
+            <Text style={{ color: colors.primary, fontSize: 28, fontWeight: "600", fontFamily: "monospace" }}>
+              {formatTime(elapsedTime)}
+            </Text>
           </View>
         )}
 
         {/* GPS Status */}
         {(job.status === "in_progress" || job.status === "accepted") && (
-          <View style={[styles.section, { borderColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>GPS Status</Text>
+          <View style={{ marginHorizontal: 16, marginVertical: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 14, marginBottom: 8 }}>
+              GPS Status
+            </Text>
             <Text
-              style={[
-                styles.gpsStatusText,
-                {
-                  color:
-                    gpsStatus === "valid"
-                      ? colors.success
-                      : gpsStatus === "invalid"
-                        ? colors.error
-                        : colors.muted,
-                },
-              ]}
+              style={{
+                color:
+                  gpsStatus === "valid"
+                    ? colors.success
+                    : gpsStatus === "invalid"
+                      ? colors.error
+                      : colors.muted,
+                fontSize: 13,
+                fontWeight: "500",
+              }}
             >
               {gpsStatus === "not_checked"
-                ? "Not checked"
+                ? "Not checked yet"
                 : gpsStatus === "checking"
-                  ? "Checking..."
+                  ? "Checking location..."
                   : gpsStatus === "valid"
-                    ? "✓ Valid location"
-                    : "✗ Invalid location"}
+                    ? "✓ Location verified"
+                    : "✗ Location invalid"}
             </Text>
           </View>
         )}
 
         {/* Action Buttons */}
-        <View style={styles.actionButtons}>
+        <View style={{ marginHorizontal: 16, marginVertical: 20, gap: 12 }}>
+          {job.status === "available" && (
+            <Pressable
+              onPress={handleAcceptJob}
+              disabled={isProcessing}
+              style={({ pressed }) => [
+                {
+                  backgroundColor: colors.primary,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  borderRadius: 8,
+                  opacity: pressed || isProcessing ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: "#ffffff", fontWeight: "600", textAlign: "center", fontSize: 16 }}>
+                {isProcessing ? "Accepting..." : "Accept Job"}
+              </Text>
+            </Pressable>
+          )}
+
           {job.status === "accepted" && (
             <Pressable
               onPress={handleStartJob}
               disabled={isProcessing}
               style={({ pressed }) => [
-                styles.primaryButton,
                 {
                   backgroundColor: colors.primary,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  borderRadius: 8,
                   opacity: pressed || isProcessing ? 0.8 : 1,
                 },
               ]}
             >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Start Job</Text>
-              )}
+              <Text style={{ color: "#ffffff", fontWeight: "600", textAlign: "center", fontSize: 16 }}>
+                {isProcessing ? "Starting..." : "Start Job"}
+              </Text>
             </Pressable>
           )}
 
           {job.status === "in_progress" && (
             <Pressable
               onPress={handleCompleteJob}
-              disabled={isProcessing || gpsStatus !== "valid"}
+              disabled={isProcessing}
               style={({ pressed }) => [
-                styles.primaryButton,
                 {
-                  backgroundColor:
-                    gpsStatus === "valid" ? colors.success : colors.muted,
+                  backgroundColor: colors.success,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  borderRadius: 8,
                   opacity: pressed || isProcessing ? 0.8 : 1,
                 },
               ]}
             >
-              {isProcessing ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <Text style={styles.primaryButtonText}>
-                  {gpsStatus === "valid" ? "Mark Done" : "GPS Required"}
-                </Text>
-              )}
+              <Text style={{ color: "#ffffff", fontWeight: "600", textAlign: "center", fontSize: 16 }}>
+                {isProcessing ? "Completing..." : "Mark Done"}
+              </Text>
             </Pressable>
           )}
 
-          {job.status === "completed" && (
-            <Text style={[styles.completedText, { color: colors.success }]}>
-              ✓ Job Completed
-            </Text>
+          {(job.status === "completed" || job.status === "needs_review") && (
+            <Pressable
+              onPress={() => router.push("/(cleaner)/invoice")}
+              style={({ pressed }) => [
+                {
+                  backgroundColor: colors.primary,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  borderRadius: 8,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: "#ffffff", fontWeight: "600", textAlign: "center", fontSize: 16 }}>
+                View Invoice
+              </Text>
+            </Pressable>
           )}
         </View>
       </ScrollView>
     </ScreenContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  errorBanner: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorText: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  section: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  propertyName: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  address: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 8,
-  },
-  detailLabel: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  instructionText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  timerText: {
-    fontSize: 32,
-    fontWeight: "700",
-    textAlign: "center",
-    fontFamily: "Menlo",
-  },
-  gpsStatusText: {
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  actionButtons: {
-    marginTop: 20,
-    marginBottom: 40,
-  },
-  primaryButton: {
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  completedText: {
-    fontSize: 16,
-    fontWeight: "600",
-    textAlign: "center",
-    paddingVertical: 14,
-  },
-});

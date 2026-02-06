@@ -153,6 +153,65 @@
 - ✅ Role-based access control (strict permissions)
 
 
+## Phase 6: Application-Level Flows & UI (NO DATABASE CHANGES)
+
+### Cleaner Flows (APPROVED UX SPEC)
+- [x] Accept job (UI, API handler, state transition)
+- [x] In progress (UI, timer, GPS passive tracking)
+- [ ] Complete job success path (APPROVED - implementing)
+- [ ] Complete job with conflicts (APPROVED - implementing)
+- [ ] Offline completion queuing and sync (APPROVED - implementing)
+- [ ] Submit invoice (UI, date selection, PDF generation stub)
+- [ ] View invoice history
+
+### Manager Flows
+- [ ] View jobs by status (available, accepted, in_progress, completed, needs_review)
+- [ ] Filter jobs by property, cleaner, date range
+- [ ] Review flagged jobs (needs_review status)
+- [ ] View job conflicts (GPS, photos, damage, booking)
+- [ ] Override completion with reason (UI form, audit trail)
+- [ ] Remove cleaner from job (revert to available, preserve invoice)
+- [ ] View job history and overrides
+
+### Conflict Visibility
+- [ ] GPS failure messaging (distance, precision)
+- [ ] Missing photos error
+- [ ] Damage report notifications
+- [ ] Booking conflict display
+- [ ] Access denied (guest present) handling
+
+### UI Components & Screens
+- [ ] Manager dashboard (job list, filters, stats)
+- [ ] Manager job detail (full info, conflicts, override form)
+- [ ] Manager conflict resolution screen
+- [ ] Cleaner job list improvements (status badges, filters)
+- [ ] Cleaner invoice screen (history, submit form)
+- [ ] Shared conflict display component
+
+### API Handlers
+- [ ] GET /jobs (manager view, with filters)
+- [ ] GET /jobs/:id (manager detail, with conflicts)
+- [ ] POST /jobs/:id/override (manager override)
+- [ ] POST /jobs/:id/remove-cleaner (revert to available)
+- [ ] GET /invoices (cleaner/manager view)
+- [ ] POST /invoices/:id/submit (cleaner submit)
+- [ ] GET /conflicts/:jobId (conflict details)
+
+### State & Error Handling
+- [ ] Job state transitions (all valid paths)
+- [ ] Conflict detection logic (GPS, photos, booking)
+- [ ] Error messages (user-friendly, actionable)
+- [ ] Loading states (spinners, disabled buttons)
+- [ ] Success feedback (toasts, confirmations)
+- [ ] Offline state handling (queue, retry)
+
+### Copy & Messaging
+- [ ] Job status labels (available, accepted, in_progress, completed, needs_review)
+- [ ] Conflict messages (GPS: "You are X meters from property", Photos: "Upload at least 1 photo")
+- [ ] Override reasons (dropdown or free text)
+- [ ] Invoice messaging (cycle selection, submission confirmation)
+- [ ] Error messages (clear, actionable, not technical)
+
 ## Phase 5B: Event-Driven Notifications & Job Chat (COMPLETED)
 - [x] Design event-driven notification architecture
 - [x] Create notification types (push, in-app, silent)
