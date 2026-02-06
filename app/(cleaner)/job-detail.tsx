@@ -38,6 +38,18 @@ interface Conflict {
   details?: string;
 }
 
+interface InventoryItem {
+  id: string;
+  name: string;
+  lowMeaning?: string;
+}
+
+interface InventorySelection {
+  itemId: string;
+  status: "good" | "low" | "order_more" | null;
+  notes?: string;
+}
+
 export default function JobDetailScreen() {
   const colors = useColors();
   const router = useRouter();
@@ -53,6 +65,8 @@ export default function JobDetailScreen() {
   );
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventorySelections, setInventorySelections] = useState<Map<string, InventorySelection>>(new Map());
 
   useEffect(() => {
     loadJobDetail();
@@ -82,6 +96,8 @@ export default function JobDetailScreen() {
         const foundJob = jobs.find((j: any) => j.id === jobId);
         if (foundJob) {
           setJob(foundJob);
+          // Load inventory items for this property
+          await loadInventoryItems(foundJob.propertyId);
         }
       }
 
@@ -96,6 +112,37 @@ export default function JobDetailScreen() {
       setError("Failed to load job details. Please try again.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadInventoryItems = async (propertyId: string) => {
+    try {
+      const inventoryData = await AsyncStorage.getItem(`inventory_${propertyId}`);
+      if (inventoryData) {
+        const items = JSON.parse(inventoryData);
+        setInventoryItems(items);
+      }
+      const selectionsData = await AsyncStorage.getItem(`inventory_selections_${jobId}`);
+      if (selectionsData) {
+        const selections = JSON.parse(selectionsData) as Array<[string, InventorySelection]>;
+        const selectionsMap = new Map<string, InventorySelection>(selections);
+        setInventorySelections(selectionsMap);
+      }
+    } catch (err) {
+      console.error("Failed to load inventory items:", err);
+    }
+  };
+
+  const updateInventorySelection = async (itemId: string, status: any, notes?: string) => {
+    const newSelection: InventorySelection = { itemId, status, notes };
+    const updatedSelections = new Map(inventorySelections);
+    updatedSelections.set(itemId, newSelection);
+    setInventorySelections(updatedSelections);
+    try {
+      const selectionsArray = Array.from(updatedSelections.entries());
+      await AsyncStorage.setItem(`inventory_selections_${jobId}`, JSON.stringify(selectionsArray));
+    } catch (err) {
+      console.error("Failed to save inventory selection:", err);
     }
   };
 
@@ -478,6 +525,55 @@ export default function JobDetailScreen() {
             <Text style={{ color: colors.foreground, fontSize: 13, lineHeight: 18 }}>
               {job.instructions}
             </Text>
+          </View>
+        )}
+
+        {/* Inventory Checklist */}
+        {inventoryItems.length > 0 && (
+          <View style={{ marginHorizontal: 16, marginVertical: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+            <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 14, marginBottom: 12 }}>
+              Inventory Checklist
+            </Text>
+            {inventoryItems.map((item: InventoryItem) => {
+              const selection = inventorySelections.get(item.id);
+              return (
+                <View key={item.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <Text style={{ color: colors.foreground, fontWeight: "500", fontSize: 13, marginBottom: 4 }}>
+                    {item.name}
+                  </Text>
+                  {item.lowMeaning && (
+                    <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8, fontStyle: "italic" }}>
+                      {item.lowMeaning}
+                    </Text>
+                  )}
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {["good", "low", "order_more"].map((status) => (
+                      <Pressable
+                        key={status}
+                        onPress={() => updateInventorySelection(item.id, status === selection?.status ? null : status)}
+                        style={({ pressed }) => [{
+                          flex: 1,
+                          paddingVertical: 8,
+                          paddingHorizontal: 8,
+                          borderRadius: 6,
+                          backgroundColor: selection?.status === status ? colors.primary : colors.border,
+                          opacity: pressed ? 0.8 : 1,
+                        }]}
+                      >
+                        <Text style={{
+                          color: selection?.status === status ? "#ffffff" : colors.foreground,
+                          fontWeight: "500",
+                          fontSize: 12,
+                          textAlign: "center",
+                        }}>
+                          {status === "good" ? "Good" : status === "low" ? "Low" : "Order"}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
           </View>
         )}
 
