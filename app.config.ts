@@ -30,9 +30,8 @@ const env = {
   // App branding - update these values directly (do not use env vars)
   appName: "Simply Organized",
   appSlug: "simply-organized",
-  // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
-  // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "",
+  // S3 URL of the app logo
+  logoUrl: "https://private-us-east-1.manuscdn.com/sessionFile/KKt4hz8zM62ErhzGwkH8j5/sandbox/klqi81EEjOR8mgsqjrRGGc-img-1_1770339675000_na1fn_aWNvbg.png?x-oss-process=image/resize,w_1920,h_1920/format,webp/quality,q_80&Expires=1798761600&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvS0t0NGh6OHpNNjJFcmh6R3drSDhqNS9zYW5kYm94L2tscWk4MUVFak9SOG1nc3FqclJHR2MtaW1nLTFfMTc3MDMzOTY3NTAwMF9uYTFmbl9hV052YmcucG5nP3gtb3NzLXByb2Nlc3M9aW1hZ2UvcmVzaXplLHdfMTkyMCxoXzE5MjAvZm9ybWF0LHdlYnAvcXVhbGl0eSxxXzgwIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJBV1M6RXBvY2hUaW1lIjoxNzk4NzYxNjAwfX19XX0_&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=Sq7uTBRU95GepAbvyj8xS-D2OiOwJ2ZoHixeliowT6qn3xiYc6w6CnL7vzPl8Awbe8sJSWz7O8qtWTy3JAg9TSL8HPYL1IxTjUsuUyNMjH5gmyZTBdiso2M9GC5CrOJS1FuC1ufA8RkhgBIutL9nZFdDd~EC~XrDfsY-kNTJDkE0MPfkaFqpSXjtHQutZBJcMkUM5GgI5wqh9d2xomn70XGWa~Hu93odKrNwN8A7cJ7MKFVMDCqGq4OnQBY85Y3adgxdf~qtjCFjqzNhPqr1l3XfrSiexlZlALDpoKnGifNWgBNOoP2QWIqBPgYWLijpbp1Jk8GjGbQAGgBuO2rcJw__",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -56,7 +55,7 @@ const config: ExpoConfig = {
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: "#E6F4FE",
+      backgroundColor: "#0a7ea4",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -105,9 +104,9 @@ const config: ExpoConfig = {
         image: "./assets/images/splash-icon.png",
         imageWidth: 200,
         resizeMode: "contain",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#0a7ea4",
         dark: {
-          backgroundColor: "#000000",
+          backgroundColor: "#0a7ea4",
         },
       },
     ],

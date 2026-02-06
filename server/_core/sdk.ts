@@ -19,7 +19,7 @@ const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0;
 
 export type SessionPayload = {
-  openId: string;
+  openId: string; // User ID from session
   appId: string;
   name: string;
 };
@@ -146,12 +146,12 @@ class SDKServer {
    * const sessionToken = await sdk.createSessionToken(userInfo.openId);
    */
   async createSessionToken(
-    openId: string,
+    userId: string,
     options: { expiresInMs?: number; name?: string } = {},
   ): Promise<string> {
     return this.signSession(
       {
-        openId,
+        openId: userId, // Reusing openId field for user ID
         appId: ENV.appId,
         name: options.name || "",
       },
@@ -249,20 +249,22 @@ class SDKServer {
 
     const sessionUserId = session.openId;
     const signedInAt = new Date();
-    let user = await db.getUserByOpenId(sessionUserId);
+    let user = await db.getUserById(sessionUserId);
 
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
       try {
         const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
+        const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         await db.upsertUser({
-          openId: userInfo.openId,
-          name: userInfo.name || null,
-          email: userInfo.email ?? null,
-          loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-          lastSignedIn: signedInAt,
+          id: userId,
+          email: userInfo.email ?? "",
+          passwordHash: "",
+          firstName: userInfo.name?.split(" ")[0] || null,
+          lastName: userInfo.name?.split(" ").slice(1).join(" ") || null,
+          role: "cleaner",
         });
-        user = await db.getUserByOpenId(userInfo.openId);
+        user = await db.getUserById(userId);
       } catch (error) {
         console.error("[Auth] Failed to sync user from OAuth:", error);
         throw ForbiddenError("Failed to sync user info");
@@ -272,11 +274,6 @@ class SDKServer {
     if (!user) {
       throw ForbiddenError("User not found");
     }
-
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
 
     return user;
   }

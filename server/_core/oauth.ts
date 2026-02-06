@@ -1,6 +1,6 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import type { Express, Request, Response } from "express";
-import { getUserByOpenId, upsertUser } from "../db";
+import { getUserById, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 
@@ -20,44 +20,54 @@ async function syncUser(userInfo: {
     throw new Error("openId missing from user info");
   }
 
+  const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const lastSignedIn = new Date();
   await upsertUser({
-    openId: userInfo.openId,
-    name: userInfo.name || null,
-    email: userInfo.email ?? null,
-    loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-    lastSignedIn,
+    id: userId,
+    email: userInfo.email ?? "",
+    passwordHash: "",
+    firstName: userInfo.name?.split(" ")[0] || null,
+    lastName: userInfo.name?.split(" ").slice(1).join(" ") || null,
+    role: "cleaner",
   });
-  const saved = await getUserByOpenId(userInfo.openId);
+  const saved = await getUserById(userId);
   return (
     saved ?? {
-      openId: userInfo.openId,
-      name: userInfo.name,
+      id: userId,
       email: userInfo.email,
-      loginMethod: userInfo.loginMethod ?? null,
-      lastSignedIn,
+      passwordHash: "",
+      firstName: userInfo.name?.split(" ")[0],
+      lastName: userInfo.name?.split(" ").slice(1).join(" "),
+      role: "cleaner" as const,
+      isActive: true,
+      createdAt: lastSignedIn,
+      updatedAt: lastSignedIn,
     }
   );
 }
 
 function buildUserResponse(
   user:
-    | Awaited<ReturnType<typeof getUserByOpenId>>
+    | Awaited<ReturnType<typeof getUserById>>
     | {
-        openId: string;
-        name?: string | null;
+        id: string;
         email?: string | null;
-        loginMethod?: string | null;
-        lastSignedIn?: Date | null;
+        firstName?: string | null;
+        lastName?: string | null;
+        role?: string;
+        isActive?: boolean;
+        createdAt?: Date | null;
+        updatedAt?: Date | null;
       },
 ) {
   return {
     id: (user as any)?.id ?? null,
-    openId: user?.openId ?? null,
-    name: user?.name ?? null,
     email: user?.email ?? null,
-    loginMethod: user?.loginMethod ?? null,
-    lastSignedIn: (user?.lastSignedIn ?? new Date()).toISOString(),
+    firstName: (user as any)?.firstName ?? null,
+    lastName: (user as any)?.lastName ?? null,
+    role: (user as any)?.role ?? null,
+    isActive: (user as any)?.isActive ?? true,
+    createdAt: ((user as any)?.createdAt ?? new Date()).toISOString(),
   };
 }
 
@@ -74,8 +84,8 @@ export function registerOAuthRoutes(app: Express) {
     try {
       const tokenResponse = await sdk.exchangeCodeForToken(code, state);
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      await syncUser(userInfo);
-      const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
+      const user = await syncUser(userInfo);
+      const sessionToken = await sdk.createSessionToken(user.id, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
       });
@@ -110,7 +120,7 @@ export function registerOAuthRoutes(app: Express) {
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
       const user = await syncUser(userInfo);
 
-      const sessionToken = await sdk.createSessionToken(userInfo.openId!, {
+      const sessionToken = await sdk.createSessionToken(user.id, {
         name: userInfo.name || "",
         expiresInMs: ONE_YEAR_MS,
       });

@@ -18,9 +18,13 @@ export async function getDb() {
   return _db;
 }
 
+/**
+ * Create or update a user in the database.
+ * For Simply Organized, users are created via email/password auth or manager invitation.
+ */
 export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
+  if (!user.email) {
+    throw new Error("User email is required for upsert");
   }
 
   const db = await getDb();
@@ -31,11 +35,14 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
   try {
     const values: InsertUser = {
-      openId: user.openId,
+      id: user.id || `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      email: user.email,
+      passwordHash: user.passwordHash || "",
     };
+
     const updateSet: Record<string, unknown> = {};
 
-    const textFields = ["name", "email", "loginMethod"] as const;
+    const textFields = ["firstName", "lastName"] as const;
     type TextField = (typeof textFields)[number];
 
     const assignNullable = (field: TextField) => {
@@ -48,25 +55,30 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 
     textFields.forEach(assignNullable);
 
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
     if (user.role !== undefined) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = "admin";
-      updateSet.role = "admin";
+    } else {
+      values.role = "cleaner"; // Default role
+      updateSet.role = "cleaner";
     }
 
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
+    if (user.companyId !== undefined) {
+      values.companyId = user.companyId;
+      updateSet.companyId = user.companyId;
     }
 
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
+    if (user.managerId !== undefined) {
+      values.managerId = user.managerId;
+      updateSet.managerId = user.managerId;
     }
+
+    if (user.isActive !== undefined) {
+      values.isActive = user.isActive;
+      updateSet.isActive = user.isActive;
+    }
+
+    updateSet.updatedAt = new Date();
 
     await db.insert(users).values(values).onDuplicateKeyUpdate({
       set: updateSet,
@@ -77,16 +89,39 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 }
 
-export async function getUserByOpenId(openId: string) {
+/**
+ * Get a user by email address.
+ */
+export async function getUserByEmail(email: string) {
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot get user: database not available");
     return undefined;
   }
 
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}
+
+/**
+ * Get a user by ID.
+ */
+export async function getUserById(id: string) {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Cannot get user: database not available");
+    return undefined;
+  }
+
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
 
   return result.length > 0 ? result[0] : undefined;
 }
 
 // TODO: add feature queries here as your schema grows.
+// - getJobsByCleanerId(cleanerId: string)
+// - getJobsByPropertyId(propertyId: string)
+// - getChatMessagesByJobId(jobId: string)
+// - getInvoicesByCleanerId(cleanerId: string)
+// - etc.
