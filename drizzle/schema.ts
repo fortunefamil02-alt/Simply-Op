@@ -38,6 +38,7 @@ export const invoiceStatusEnum = mysqlEnum("invoice_status", [
   "paid",
 ]);
 export const invoiceCycleEnum = mysqlEnum("invoice_cycle", ["1st", "15th", "bi_weekly"]);
+export const payTypeEnum = mysqlEnum("pay_type", ["hourly", "per_job"]);
 export const damageSeverityEnum = mysqlEnum("damage_severity", ["minor", "moderate", "severe"]);
 export const mediaTypeEnum = mysqlEnum("media_type", ["photo", "video"]);
 export const notificationTypeEnum = mysqlEnum("notification_type", [
@@ -86,6 +87,7 @@ export const users = mysqlTable(
     lastName: varchar("last_name", { length: 100 }),
     phone: varchar("phone", { length: 20 }),
     role: roleEnum.notNull().default("cleaner"),
+    payType: payTypeEnum.default("per_job"), // Cleaner's default pay type (hourly or per_job)
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
@@ -194,6 +196,7 @@ export const cleaningJobs = mysqlTable(
     gpsEndLng: decimal("gps_end_lng", { precision: 11, scale: 8 }),
     invoiceId: varchar("invoice_id", { length: 64 }), // Link to invoice after completion
     accessDenied: boolean("access_denied").notNull().default(false), // Guest present, job not started
+    payTypeOverride: payTypeEnum, // Manager override for this job's pay type (nullable = use cleaner's default)
     overriddenBy: varchar("overridden_by", { length: 64 }), // Manager who overrode completion
     overrideReason: text("override_reason"), // Why manager overrode (required)
     overriddenAt: timestamp("overridden_at"), // When override occurred
@@ -359,6 +362,7 @@ export const invoices = mysqlTable(
     cleanerId: varchar("cleaner_id", { length: 64 }).notNull(),
     status: invoiceStatusEnum.notNull().default("open"),
     invoiceCycle: invoiceCycleEnum.notNull().default("bi_weekly"),
+    payType: payTypeEnum.notNull().default("per_job"), // Immutable for this pay cycle (set at invoice creation)
     periodStart: timestamp("period_start").notNull(),
     periodEnd: timestamp("period_end").notNull(),
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),

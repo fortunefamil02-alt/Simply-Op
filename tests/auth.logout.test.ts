@@ -22,6 +22,7 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] }
     lastName: "User",
     phone: null,
     role: "cleaner",
+    payType: "per_job",
     isActive: true,
     createdAt: new Date(),
     updatedAt: new Date(),

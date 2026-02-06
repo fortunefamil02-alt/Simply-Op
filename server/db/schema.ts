@@ -33,6 +33,7 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
   "paid",
 ]);
 export const invoiceCycleEnum = pgEnum("invoice_cycle", ["1st", "15th", "bi_weekly"]);
+export const payTypeEnum = pgEnum("pay_type", ["hourly", "per_job"]);
 export const damageSeverityEnum = pgEnum("damage_severity", ["minor", "moderate", "severe"]);
 
 // ============================================================================
@@ -50,6 +51,7 @@ export const users = pgTable(
     role: roleEnum("role").notNull().default("cleaner"),
     companyId: text("company_id"), // Super Manager's company
     managerId: text("manager_id"), // Manager's parent Super Manager
+    payType: payTypeEnum("pay_type").default("per_job"), // Cleaner's default pay type (hourly or per_job)
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -136,6 +138,7 @@ export const jobs = pgTable(
     gpsEndLng: decimal("gps_end_lng", { precision: 11, scale: 8 }),
     invoiceId: text("invoice_id"), // Link to invoice (after completion)
     accessDenied: boolean("access_denied").default(false), // Guest present, job not started
+    payTypeOverride: payTypeEnum("pay_type_override"), // Manager override for this job's pay type (nullable = use cleaner's default)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -254,6 +257,7 @@ export const invoices = pgTable(
     cleanerId: text("cleaner_id").notNull(),
     status: invoiceStatusEnum("status").notNull().default("open"),
     invoiceCycle: invoiceCycleEnum("invoice_cycle").notNull().default("bi_weekly"),
+    payType: payTypeEnum("pay_type").notNull().default("per_job"), // Immutable for this pay cycle (set at invoice creation)
     periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
     periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),

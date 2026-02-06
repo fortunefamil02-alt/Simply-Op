@@ -18,7 +18,7 @@ interface Invoice {
     createdAt: Date;
   }>;
   payType: string;
-  paymentCycle: string;
+  invoiceCycle: string;
   createdAt: Date | null;
   submittedAt: Date | null;
 }
@@ -99,9 +99,12 @@ export default function InvoiceScreen() {
       return;
     }
 
+    const payTypeLabel = currentInvoice.payType === "hourly" ? "hourly" : "per-job";
+    const totalDisplay = `$${currentInvoice.totalAmount.toFixed(2)}`;
+
     Alert.alert(
       "Submit Invoice?",
-      `Submit ${currentInvoice.payType === "hourly" ? "hourly" : "per-job"} invoice for $${currentInvoice.totalAmount.toFixed(2)}?`,
+      `Submit ${payTypeLabel} invoice for ${totalDisplay}?`,
       [
         {
           text: "Cancel",
@@ -215,7 +218,7 @@ export default function InvoiceScreen() {
           // Current Invoice Tab
           currentInvoice && currentInvoice.id ? (
             <View>
-              {/* Total Amount */}
+              {/* Total Amount - Pay Type Specific Header */}
               <View
                 style={{
                   backgroundColor: colors.surface,
@@ -226,9 +229,12 @@ export default function InvoiceScreen() {
                   borderColor: colors.border,
                 }}
               >
+                {/* Pay Type Label */}
                 <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}>
                   {currentInvoice.payType === "hourly" ? "Total Earnings" : "Invoice Total"}
                 </Text>
+
+                {/* Amount */}
                 <Text
                   style={{
                     color: colors.primary,
@@ -239,12 +245,21 @@ export default function InvoiceScreen() {
                 >
                   ${currentInvoice.totalAmount.toFixed(2)}
                 </Text>
+
+                {/* Pay Type and Cycle */}
                 <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  {currentInvoice.payType === "hourly" ? "Hourly" : "Per-Job"} • {currentInvoice.paymentCycle}
+                  {currentInvoice.payType === "hourly" ? "Hourly" : "Per-Job"} • {currentInvoice.invoiceCycle}
                 </Text>
+
+                {/* Pay Type Specific Message */}
+                {currentInvoice.payType === "hourly" && (
+                  <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8, fontStyle: "italic" }}>
+                    Earnings from {currentInvoice.lineItems.length} completed job{currentInvoice.lineItems.length !== 1 ? "s" : ""}
+                  </Text>
+                )}
               </View>
 
-              {/* Line Items */}
+              {/* Line Items - Pay Type Specific Display */}
               {currentInvoice.lineItems.length > 0 && (
                 <View
                   style={{
@@ -273,10 +288,15 @@ export default function InvoiceScreen() {
                         <Text style={{ color: colors.foreground, fontWeight: "500", fontSize: 13 }}>
                           Job {index + 1}
                         </Text>
-                        <Text style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}>
-                          ${item.amount.toFixed(2)}
-                        </Text>
+                        {/* Only show price for per-job cleaners */}
+                        {currentInvoice.payType === "per_job" && (
+                          <Text style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}>
+                            ${item.amount.toFixed(2)}
+                          </Text>
+                        )}
                       </View>
+
+                      {/* Job date for all pay types */}
                       {item.jobDate && (
                         <Text style={{ color: colors.muted, fontSize: 12 }}>
                           {new Date(item.jobDate).toLocaleDateString("en-US", {
@@ -285,6 +305,8 @@ export default function InvoiceScreen() {
                           })}
                         </Text>
                       )}
+
+                      {/* Duration for hourly cleaners */}
                       {currentInvoice.payType === "hourly" && item.jobDuration && (
                         <Text style={{ color: colors.muted, fontSize: 12 }}>
                           {Math.round(item.jobDuration / 60)} min
@@ -353,7 +375,8 @@ export default function InvoiceScreen() {
                     </Text>
                   </View>
                   <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}>
-                    {invoice.lineItems.length} job{invoice.lineItems.length !== 1 ? "s" : ""}
+                    {invoice.payType === "hourly" ? "Hourly" : "Per-Job"} • {invoice.lineItems.length} job
+                    {invoice.lineItems.length !== 1 ? "s" : ""}
                   </Text>
                   {invoice.submittedAt && (
                     <Text style={{ color: colors.muted, fontSize: 12 }}>
