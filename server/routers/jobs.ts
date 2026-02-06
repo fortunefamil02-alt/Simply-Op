@@ -13,7 +13,8 @@
 
 import { z } from "zod";
 import { and, eq, inArray, or, isNull, type SQL } from "drizzle-orm";
-import { TRPCError } from "@trpc/server";import { protectedProcedure, managerProcedure, router } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
+import { protectedProcedure, managerProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import {
   cleaningJobs,
@@ -23,7 +24,7 @@ import {
   invoiceLineItems,
   invoices,
 } from "../../drizzle/schema";
-
+import { validateGPSRadius, hasReasonablePrecision } from "../utils/gps-validation";
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -401,9 +402,46 @@ export const jobsRouter = router({
           });
         }
 
-        // 3. TODO: Server-side GPS validation (separate task)
-        // For now, accept client-provided GPS coordinates
-        // In production, verify GPS is within 50m of property coordinates
+        // 4. Server-side GPS validation
+        // Get property coordinates for validation
+        const property = await tx.query.properties.findFirst({
+          where: eq(properties.id, job.propertyId),
+          columns: {
+            latitude: true,
+            longitude: true,
+          },
+        });
+
+        if (!property || !property.latitude || !property.longitude) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Property coordinates not available for GPS validation",
+          });
+        }
+
+        // Validate GPS coordinates have reasonable precision (prevent low-precision spoofing)
+        if (!hasReasonablePrecision(input.gpsLat, input.gpsLng)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "GPS coordinates lack sufficient precision. Please use a device with better GPS accuracy.",
+          });
+        }
+
+        // Validate GPS is within 50m of property
+        const gpsValidation = validateGPSRadius(
+          property.latitude,
+          property.longitude,
+          input.gpsLat,
+          input.gpsLng,
+          50 // 50 meter radius
+        );
+
+        if (!gpsValidation.valid) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: gpsValidation.error || "GPS location is too far from property",
+          });
+        }
 
         // 4. Update job atomically
         const updated = await tx
@@ -499,11 +537,48 @@ export const jobsRouter = router({
           });
         }
 
-        // 4. TODO: Server-side GPS validation (separate task)
-        // For now, accept client-provided GPS coordinates
-        // In production, verify GPS is within 50m of property coordinates
+        // 4. Server-side GPS validation for start
+        // Get property coordinates for validation
+        const property = await tx.query.properties.findFirst({
+          where: eq(properties.id, job.propertyId),
+          columns: {
+            latitude: true,
+            longitude: true,
+          },
+        });
 
-        // 5. Update job atomically
+        if (!property || !property.latitude || !property.longitude) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Property coordinates not available for GPS validation",
+          });
+        }
+
+        // Validate GPS coordinates have reasonable precision (prevent low-precision spoofing)
+        if (!hasReasonablePrecision(input.gpsLat, input.gpsLng)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "GPS coordinates lack sufficient precision. Please use a device with better GPS accuracy.",
+          });
+        }
+
+        // Validate GPS is within 50m of property
+        const gpsValidation = validateGPSRadius(
+          property.latitude,
+          property.longitude,
+          input.gpsLat,
+          input.gpsLng,
+          50 // 50 meter radius
+        );
+
+        if (!gpsValidation.valid) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: gpsValidation.error || "GPS location is too far from property",
+          });
+        }
+
+        // 5. Update job atomically (GPS already validated)
         const updated = await tx
           .update(cleaningJobs)
           .set({
