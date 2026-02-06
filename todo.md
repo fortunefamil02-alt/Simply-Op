@@ -29,16 +29,18 @@
 - [ ] Add "Forgot Password" flow (optional for MVP)
 
 ## Phase 4: Job Card UI & Job Flow Logic
-- [ ] Create Job List screen for Cleaners (Available/Accepted/Completed tabs)
-- [ ] Create Job Card component (property, date, guest count, pets, price, status)
-- [ ] Implement "Accept Job" button and logic (lock job to cleaner)
-- [ ] Create Job Detail screen (full job info, instructions, status)
-- [ ] Implement "Start Job" button with GPS verification
-- [ ] Implement timer (start on first photo, display elapsed time)
-- [ ] Implement "Done" button with GPS verification
-- [ ] Add GPS location tracking (expo-location)
-- [ ] Implement GPS check-in/check-out validation
-- [ ] Add offline support for job list (cache jobs locally)
+- [x] Create Job List screen for Cleaners (Available/Accepted/Completed tabs)
+- [x] Create Job Card component (property, date, guest count, pets, price, status)
+- [x] Implement "Accept Job" button and logic (lock job to cleaner)
+- [x] Create Job Detail screen (full job info, instructions, status)
+- [x] Implement "Start Job" button with GPS verification
+- [x] Implement timer (start on first photo, display elapsed time)
+- [x] Implement "Done" button with GPS verification
+- [x] Add GPS location tracking (expo-location)
+- [x] Implement GPS check-in/check-out validation
+- [x] Add offline support for job list (cache jobs locally)
+- [x] Create cleaner layout with tab navigation
+- [x] Implement role-based routing (cleaners to job list)
 
 ## Phase 5: Photo/Video Upload & Inventory Management
 - [ ] Create Camera Upload screen

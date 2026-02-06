@@ -44,8 +44,12 @@ function RootLayoutNav() {
       // User is not signed in, redirect to login
       router.replace("/login");
     } else if (user && inAuthGroup) {
-      // User is signed in, redirect to app
-      router.replace("/(tabs)");
+      // User is signed in, redirect to appropriate dashboard based on role
+      if (user.role === "cleaner") {
+        router.replace("/(cleaner)/jobs");
+      } else {
+        router.replace("/(tabs)");
+      }
     }
   }, [user, isInitialized, segments]);
 
@@ -53,6 +57,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(cleaner)" />
       <Stack.Screen name="oauth/callback" />
     </Stack>
   );
