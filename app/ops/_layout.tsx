@@ -1,6 +1,7 @@
 import { Stack, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { AuthLoadingScreen } from "@/components/auth-loading-screen";
 
 /**
  * Simply Ops - Founder-only control plane
@@ -23,9 +24,14 @@ export default function OpsLayout() {
     }
   }, [user, isInitialized, router]);
 
-  // Show nothing while auth is initializing or redirecting
-  if (!isInitialized || !user || (user.role as string) !== "founder") {
-    return null;
+  // Show loading screen while auth is initializing
+  if (!isInitialized) {
+    return <AuthLoadingScreen />;
+  }
+
+  // Show loading screen for non-founders (they'll be redirected)
+  if (!user || (user.role as string) !== "founder") {
+    return <AuthLoadingScreen />;
   }
 
   return (
@@ -55,6 +61,13 @@ export default function OpsLayout() {
         name="audit-log"
         options={{
           title: "Audit Log",
+        }}
+      />
+      <Stack.Screen
+        name="login"
+        options={{
+          title: "Founder Login",
+          headerBackVisible: false,
         }}
       />
     </Stack>
