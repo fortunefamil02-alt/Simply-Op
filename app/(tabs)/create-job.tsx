@@ -50,26 +50,20 @@ export default function CreateJobScreen() {
 
   const createJobMutation = trpc.jobs.create.useMutation();
 
-  // Fetch properties and cleaners on mount
+  // Fetch properties from API
+  const { data: apiProperties = [] } = trpc.properties.list.useQuery();
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // In a real implementation, these would be API calls
-        // For now, using mock data
-        setProperties([
-          { id: "prop_1", name: "Downtown Apartment", address: "123 Main St" },
-          { id: "prop_2", name: "Beachfront Condo", address: "456 Ocean Ave" },
-        ]);
-        setCleaners([
-          { id: "cleaner_1", email: "sarah@example.com" },
-          { id: "cleaner_2", email: "mike@example.com" },
-        ]);
-      } catch (err) {
-        setError("Failed to load properties and cleaners");
-      }
-    };
-    fetchData();
-  }, []);
+    if (apiProperties && apiProperties.length > 0) {
+      setProperties(
+        apiProperties.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          address: p.address,
+        }))
+      );
+    }
+  }, [apiProperties]);
 
   const handleCreateJob = async () => {
     if (!selectedProperty || !cleaningDate) {
@@ -101,10 +95,11 @@ export default function CreateJobScreen() {
       setNotes("");
       setPrice("");
 
-      // Navigate back to job list
-      router.back();
+      // Navigate to job list
+      router.push("/(tabs)/manager-jobs");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create job");
+      console.error("Job creation error:", err);
     } finally {
       setIsSubmitting(false);
     }

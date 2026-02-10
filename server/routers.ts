@@ -10,6 +10,7 @@ import { founderRouter } from "./routers/founder";
 import { governanceRouter } from "./routers/governance";
 import { businessRouter } from "./routers/business";
 import { photosRouter } from "./routers/photos";
+import { propertiesRouter } from "./routers/properties";
 import { integrationsRouter } from "./routers/integrations";
 import { authRouter } from "./routers/auth";
 
@@ -31,6 +32,7 @@ export const appRouter = router({
   // Business API
   business: businessRouter,
   photos: photosRouter,
+  properties: propertiesRouter,
 
   // Integrations API (Skeleton Only)
   integrations: integrationsRouter,
