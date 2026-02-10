@@ -37,9 +37,34 @@ function RootLayoutNav() {
   const { user, isInitialized, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const [businessStatus, setBusinessStatus] = useState<string | null>(null);
+  const [suspensionReason, setSuspensionReason] = useState<string | null>(null);
+  const [statusLoaded, setStatusLoaded] = useState(false);
+
+  // Check business status on app launch
+  const { data: statusData, isLoading: statusLoading } = trpc.business.getStatus.useQuery(
+    { businessId: user?.companyId || "" },
+    { enabled: !!user && !!user.companyId && (user.role as string) !== "founder" }
+  );
 
   useEffect(() => {
-    if (!isInitialized) return;
+    if (statusData) {
+      setBusinessStatus(statusData.status);
+      setSuspensionReason(statusData.reason);
+    }
+    if (!statusLoading) {
+      setStatusLoaded(true);
+    }
+  }, [statusData, statusLoading]);
+
+  useEffect(() => {
+    if (isInitialized && (!user || (user.role as string) === "founder" || !user.companyId)) {
+      setStatusLoaded(true);
+    }
+  }, [isInitialized, user]);
+
+  useEffect(() => {
+    if (!isInitialized || !statusLoaded) return;
 
     const inAuthGroup = segments[0] === "login";
 
@@ -57,11 +82,21 @@ function RootLayoutNav() {
         router.replace("/(tabs)");
       }
     }
-  }, [user, isInitialized, segments]);
+  }, [user, isInitialized, segments, statusLoaded, businessStatus]);
 
-  // Show loading screen while auth is initializing
-  if (!isInitialized || isLoading) {
+  // Show loading screen while auth is initializing or business status is loading
+  if (!isInitialized || isLoading || !statusLoaded) {
     return <AuthLoadingScreen />;
+  }
+
+  // Show pending activation screen if business is pending
+  if (user && (user.role as string) !== "founder" && businessStatus === "pending") {
+    return <PendingActivationScreen />;
+  }
+
+  // Show suspended account screen if business is suspended
+  if (user && (user.role as string) !== "founder" && businessStatus === "suspended") {
+    return <SuspendedAccountScreen reason={suspensionReason || undefined} />;
   }
 
   return (
