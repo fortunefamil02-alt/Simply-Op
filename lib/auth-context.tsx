@@ -1,7 +1,7 @@
 import { createContext, useContext, useReducer, ReactNode, useEffect } from "react";
 import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { trpc } from "./trpc";
+import { trpcClient } from "./trpc-client";
 
 // ============================================================================
 // SANDBOX AUTHENTICATION NOTE
@@ -122,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Validate session with backend
         // Use client to call auth.me
-        const meResult = await (trpc.auth.me as any).query();
+        const meResult = await trpcClient.auth.me.query();
         
         if (meResult) {
           // Session is valid, restore user
@@ -181,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       // Call backend login endpoint via tRPC
-      const response = await trpc.auth.login.useMutation().mutateAsync({ email, password });
+      const response = await trpcClient.auth.login.mutate({ email, password });
 
       if (!response || !response.id) {
         throw new Error("Login failed: No response from server");
@@ -224,7 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       // Call backend logout endpoint
-      await trpc.auth.logout.useMutation().mutateAsync();
+      await trpcClient.auth.logout.mutate();
 
       // Clear local storage
       await SecureStore.deleteItemAsync("auth_token");
