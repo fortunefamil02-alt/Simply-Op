@@ -36,12 +36,9 @@ function RootLayoutNav() {
   const segments = useSegments();
   const router = useRouter();
 
-  // Show loading screen while auth is initializing
-  if (!isInitialized || isLoading) {
-    return <AuthLoadingScreen />;
-  }
-
   useEffect(() => {
+    if (!isInitialized) return;
+
     const inAuthGroup = segments[0] === "login";
 
     if (!user && !inAuthGroup) {
@@ -57,6 +54,11 @@ function RootLayoutNav() {
       }
     }
   }, [user, isInitialized, segments]);
+
+  // Show loading screen while auth is initializing
+  if (!isInitialized || isLoading) {
+    return <AuthLoadingScreen />;
+  }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
