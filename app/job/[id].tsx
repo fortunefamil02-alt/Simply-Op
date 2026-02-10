@@ -273,6 +273,15 @@ export default function JobDetailScreen() {
               <Text className="text-white font-semibold">Add Photos & Complete</Text>
             </TouchableOpacity>
           )}
+
+          {user?.role === "manager" && currentJob.status !== "in_progress" && currentJob.status !== "completed" && (
+            <TouchableOpacity
+              onPress={() => router.push(`/job/${id}/reassign`)}
+              className="bg-warning rounded-lg py-3 items-center"
+            >
+              <Text className="text-white font-semibold">Reassign Cleaner</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </ScreenContainer>

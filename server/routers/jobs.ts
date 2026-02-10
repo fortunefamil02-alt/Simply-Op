@@ -26,6 +26,7 @@ import {
 } from "../../drizzle/schema";
 import { validateGPSRadius, hasReasonablePrecision } from "../utils/gps-validation";
 import { media } from "../../drizzle/schema";
+import { randomUUID } from "crypto";
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -865,6 +866,71 @@ export const jobsRouter = router({
         notes: input.notes || null,
         assignedCleanerId: input.assignedCleanerId || null,
         createdAt: now,
+      };
+    }),
+
+  reassign: managerProcedure
+    .input(
+      z.object({
+        jobId: z.string(),
+        newCleanerId: z.string(),
+      })
+    )
+    .mutation(async ({ input, ctx }: any) => {
+      const db = (await getDb()) as any;
+      if (!db) throw new Error("Database connection failed");
+
+      const { jobId, newCleanerId } = input;
+
+      const job = await db.query.cleaningJobs.findFirst({
+        where: eq(cleaningJobs.id, jobId),
+      });
+
+      if (!job) {
+        throw new Error("Job not found");
+      }
+
+      if (job.companyId !== ctx.user.companyId) {
+        throw new Error("Unauthorized");
+      }
+
+      if (job.status === "in_progress" || job.status === "completed") {
+        throw new Error(`Cannot reassign job with status: ${job.status}`);
+      }
+
+      const newCleaner = await db.query.users.findFirst({
+        where: eq(users.id, newCleanerId),
+      });
+
+      if (!newCleaner) {
+        throw new Error("Cleaner not found");
+      }
+
+      if ((newCleaner as any).companyId !== job.companyId) {
+        throw new Error("Cleaner not in your company");
+      }
+
+      if ((newCleaner as any).role !== "cleaner") {
+        throw new Error("User is not a cleaner");
+      }
+
+      const oldCleanerId = job.assignedCleanerId;
+
+      await db
+        .update(cleaningJobs)
+        .set({
+          assignedCleanerId: newCleanerId,
+          updatedAt: new Date(),
+        })
+        .where(eq(cleaningJobs.id, jobId));
+
+      // TODO: Log reassignment in audit log when table is available
+
+      return {
+        success: true,
+        jobId,
+        oldCleanerId,
+        newCleanerId,
       };
     }),
 });
