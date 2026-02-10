@@ -20,6 +20,8 @@ import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { AuthLoadingScreen } from "@/components/auth-loading-screen";
+import { PendingActivationScreen } from "@/components/pending-activation-screen";
+import { SuspendedAccountScreen } from "@/components/suspended-account-screen";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -46,7 +48,9 @@ function RootLayoutNav() {
       router.replace("/login");
     } else if (user && inAuthGroup) {
       // User is signed in, redirect to appropriate dashboard based on role
-      if (user.role === "cleaner") {
+      if ((user.role as string) === "founder") {
+        router.replace("/ops");
+      } else if (user.role === "cleaner") {
         router.replace("/(cleaner)/jobs");
       } else {
         // manager or super_manager
@@ -65,6 +69,7 @@ function RootLayoutNav() {
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="(cleaner)" />
+      <Stack.Screen name="ops" options={{ headerShown: false }} />
       <Stack.Screen name="oauth/callback" />
     </Stack>
   );

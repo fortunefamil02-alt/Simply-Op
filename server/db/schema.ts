@@ -18,7 +18,8 @@ import { relations } from "drizzle-orm";
 // ENUMS
 // ============================================================================
 
-export const roleEnum = pgEnum("role", ["super_manager", "manager", "cleaner"]);
+export const roleEnum = pgEnum("role", ["super_manager", "manager", "cleaner", "founder"]);
+export const businessStatusEnum = pgEnum("business_status", ["pending", "active", "suspended"]);
 export const jobStatusEnum = pgEnum("job_status", [
   "available",
   "accepted",
@@ -35,6 +36,59 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
 export const invoiceCycleEnum = pgEnum("invoice_cycle", ["1st", "15th", "bi_weekly"]);
 export const payTypeEnum = pgEnum("pay_type", ["hourly", "per_job"]);
 export const damageSeverityEnum = pgEnum("damage_severity", ["minor", "moderate", "severe"]);
+export const auditActionEnum = pgEnum("audit_action", [
+  "business_created",
+  "business_activated",
+  "business_suspended",
+  "user_created",
+  "user_role_changed",
+  "user_deactivated",
+]);
+
+// ============================================================================
+// GOVERNANCE & BUSINESSES
+// ============================================================================
+
+export const businesses = pgTable(
+  "businesses",
+  {
+    id: text("id").primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    founderId: text("founder_id").notNull(),
+    status: businessStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+    suspensionReason: text("suspension_reason"),
+  },
+  (table) => ({
+    founderIdx: index("businesses_founder_id_idx").on(table.founderId),
+    statusIdx: index("businesses_status_idx").on(table.status),
+  })
+);
+
+/**
+ * Immutable audit log - records all governance actions
+ * Cannot be modified or deleted after creation
+ */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey(),
+    founderId: text("founder_id").notNull(),
+    action: auditActionEnum("action").notNull(),
+    targetType: varchar("target_type", { length: 50 }).notNull(), // "business", "user"
+    targetId: text("target_id").notNull(),
+    details: json("details"), // JSON object with action-specific details
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    founderIdx: index("audit_log_founder_id_idx").on(table.founderId),
+    actionIdx: index("audit_log_action_idx").on(table.action),
+    targetIdx: index("audit_log_target_id_idx").on(table.targetId),
+    createdIdx: index("audit_log_created_at_idx").on(table.createdAt),
+  })
+);
 
 // ============================================================================
 // USERS & ROLES
@@ -49,7 +103,8 @@ export const users = pgTable(
     firstName: varchar("first_name", { length: 100 }),
     lastName: varchar("last_name", { length: 100 }),
     role: roleEnum("role").notNull().default("cleaner"),
-    companyId: text("company_id"), // Super Manager's company
+    businessId: text("business_id"), // Business this user belongs to (nullable for founder)
+    companyId: text("company_id"), // Super Manager's company (deprecated, use businessId)
     managerId: text("manager_id"), // Manager's parent Super Manager
     payType: payTypeEnum("pay_type").default("per_job"), // Cleaner's default pay type (hourly or per_job)
     isActive: boolean("is_active").notNull().default(true),
@@ -59,6 +114,7 @@ export const users = pgTable(
   (table) => ({
     emailIdx: index("users_email_idx").on(table.email),
     roleIdx: index("users_role_idx").on(table.role),
+    businessIdx: index("users_business_id_idx").on(table.businessId),
     companyIdx: index("users_company_id_idx").on(table.companyId),
   })
 );

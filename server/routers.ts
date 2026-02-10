@@ -6,6 +6,7 @@ import { jobsRouter } from "./routers/jobs";
 import { managerOverridesRouter } from "./routers/manager-overrides";
 import { invoicesRouter } from "./routers/invoices";
 import { founderRouter } from "./routers/founder";
+import { governanceRouter } from "./routers/governance";
 import { integrationsRouter } from "./routers/integrations";
 import { authRouter } from "./routers/auth";
 
@@ -21,6 +22,7 @@ export const appRouter = router({
 
   // Founder/Governance API
   founder: founderRouter,
+  governance: governanceRouter,
 
   // Integrations API (Skeleton Only)
   integrations: integrationsRouter,
