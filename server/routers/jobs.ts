@@ -771,4 +771,100 @@ export const jobsRouter = router({
 
       return job;
     }),
+
+  /**
+   * Create a new job (manual entry by manager)
+   * Manager-only endpoint for manual job creation
+   * No Guesty or external integrations
+   */
+  create: managerProcedure
+    .input(
+      z.object({
+        propertyId: z.string(),
+        cleaningDate: z.date(),
+        cleaningTime: z.string().optional(),
+        notes: z.string().optional(),
+        assignedCleanerId: z.string().optional(),
+        price: z.number().min(0).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb() as any;
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database unavailable",
+        });
+      }
+
+      const property = await db.query.properties.findFirst({
+        where: and(
+          eq(properties.id, input.propertyId),
+          eq(properties.businessId, ctx.user.businessId)
+        ),
+      });
+
+      if (!property) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Property not found or does not belong to your business",
+        });
+      }
+
+      if (input.assignedCleanerId) {
+        const cleaner = await db.query.users.findFirst({
+          where: and(
+            eq(users.id, input.assignedCleanerId),
+            eq(users.businessId, ctx.user.businessId),
+            eq(users.role, "cleaner")
+          ),
+        });
+
+        if (!cleaner) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Cleaner not found or does not belong to your business",
+          });
+        }
+      }
+
+      const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const now = new Date();
+
+      const newJob = {
+        id: jobId,
+        businessId: ctx.user.businessId,
+        propertyId: input.propertyId,
+        bookingId: null,
+        cleaningDate: input.cleaningDate,
+        status: "available" as const,
+        price: input.price?.toString() || "0",
+        instructions: input.notes || null,
+        assignedCleanerId: input.assignedCleanerId || null,
+        acceptedAt: null,
+        startedAt: null,
+        completedAt: null,
+        gpsStartLat: null,
+        gpsStartLng: null,
+        gpsEndLat: null,
+        gpsEndLng: null,
+        invoiceId: null,
+        accessDenied: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await db.insert(cleaningJobs).values(newJob);
+
+      return {
+        id: jobId,
+        propertyId: input.propertyId,
+        cleaningDate: input.cleaningDate,
+        status: "available",
+        price: input.price || 0,
+        notes: input.notes || null,
+        assignedCleanerId: input.assignedCleanerId || null,
+        createdAt: now,
+      };
+    }),
 });

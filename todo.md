@@ -226,3 +226,12 @@
 - [x] Implement critical alert events (damage, cleaner removed, override request, GPS mismatch, access denied)
 - [x] Implement booking and invoice events
 - [x] Document event-driven architecture and notification flows
+
+## Phase 2: Alpha Job Creation (COMPLETED)
+- [x] Create jobs.create backend endpoint (manager-only)
+- [x] Implement property ownership validation
+- [x] Implement cleaner assignment validation
+- [x] Create Job Creation UI screen
+- [x] Wire Job Creation UI to trpc.jobs.create
+- [x] Add form validation and error handling
+- [x] Test end-to-end job creation flow
