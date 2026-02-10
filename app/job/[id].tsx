@@ -267,15 +267,10 @@ export default function JobDetailScreen() {
 
           {user?.role === "cleaner" && currentJob.status === "in_progress" && (
             <TouchableOpacity
-              onPress={handleCompleteJob}
-              disabled={actionLoading}
+              onPress={() => router.push(`/job/${id}/photos`)}
               className="bg-primary rounded-lg py-3 items-center"
             >
-              {actionLoading ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text className="text-white font-semibold">Complete Job</Text>
-              )}
+              <Text className="text-white font-semibold">Add Photos & Complete</Text>
             </TouchableOpacity>
           )}
         </View>

@@ -9,6 +9,7 @@ import { invoicesRouter } from "./routers/invoices";
 import { founderRouter } from "./routers/founder";
 import { governanceRouter } from "./routers/governance";
 import { businessRouter } from "./routers/business";
+import { photosRouter } from "./routers/photos";
 import { integrationsRouter } from "./routers/integrations";
 import { authRouter } from "./routers/auth";
 
@@ -29,6 +30,7 @@ export const appRouter = router({
 
   // Business API
   business: businessRouter,
+  photos: photosRouter,
 
   // Integrations API (Skeleton Only)
   integrations: integrationsRouter,
