@@ -120,42 +120,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         dispatch({ type: "SET_LOADING", payload: true });
 
-        // Validate session with backend
-        // Use client to call auth.me
-        const meResult = await trpcClient.auth.me.query();
-        
-        if (meResult) {
-          // Session is valid, restore user
-          const user: User = {
-            id: meResult.id,
-            email: meResult.email,
-            firstName: meResult.firstName,
-            lastName: meResult.lastName,
-            role: meResult.role,
-            companyId: meResult.businessId,
-            managerId: null,
-            isActive: meResult.isActive,
-            createdAt: new Date(meResult.createdAt),
-            updatedAt: new Date(meResult.updatedAt),
-          };
-          dispatch({ type: "SET_USER", payload: user });
-          dispatch({ type: "SET_TOKEN", payload: "session_valid" });
-        } else {
-          // Session invalid or expired, clear storage
-          try {
-            await SecureStore.deleteItemAsync("auth_token");
-          } catch (e) {
-            // Ignore
+        // Step 1: Try to restore user from local storage first
+        let savedUser: User | null = null;
+        try {
+          const userJson = await AsyncStorage.getItem("auth_user");
+          if (userJson) {
+            savedUser = JSON.parse(userJson);
+            console.log("[Auth] Restored user from AsyncStorage:", savedUser?.email);
           }
-          try {
-            await AsyncStorage.removeItem("auth_user");
-          } catch (e) {
-            // Ignore
-          }
+        } catch (e) {
+          console.log("[Auth] Failed to restore from AsyncStorage:", e);
         }
-      } catch (error) {
-        console.error("[Auth] Failed to initialize:", error);
-        // Clear storage on error
+
+        // Step 2: Validate session with backend
+        try {
+          const meResult = await trpcClient.auth.me.query();
+          
+          if (meResult) {
+            // Backend session valid, use backend user data
+            const user: User = {
+              id: meResult.id,
+              email: meResult.email,
+              firstName: meResult.firstName,
+              lastName: meResult.lastName,
+              role: meResult.role,
+              companyId: meResult.businessId,
+              managerId: null,
+              isActive: meResult.isActive,
+              createdAt: new Date(meResult.createdAt),
+              updatedAt: new Date(meResult.updatedAt),
+            };
+            dispatch({ type: "SET_USER", payload: user });
+            dispatch({ type: "SET_TOKEN", payload: "session_valid" });
+            console.log("[Auth] Session validated with backend:", user.email);
+            return;
+          }
+        } catch (e) {
+          console.log("[Auth] Backend validation failed:", e);
+        }
+
+        // Step 3: If backend validation failed but we have a saved user, use it as fallback
+        if (savedUser) {
+          console.log("[Auth] Using saved user as fallback:", savedUser.email);
+          dispatch({ type: "SET_USER", payload: savedUser });
+          dispatch({ type: "SET_TOKEN", payload: "session_fallback" });
+          return;
+        }
+
+        // Step 4: No session found, clear storage
+        console.log("[Auth] No session found, clearing storage");
         try {
           await SecureStore.deleteItemAsync("auth_token");
         } catch (e) {
@@ -166,6 +179,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (e) {
           // Ignore
         }
+      } catch (error) {
+        console.error("[Auth] Failed to initialize:", error);
+        // Don't clear storage on error - let fallback handle it
       } finally {
         dispatch({ type: "SET_LOADING", payload: false });
         dispatch({ type: "SET_INITIALIZED" });
@@ -204,9 +220,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Generate session token (backend handles cookie, we store for reference)
       const sessionToken = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Store token and user
-      await SecureStore.setItemAsync("auth_token", sessionToken);
-      await AsyncStorage.setItem("auth_user", JSON.stringify(user));
+      // Store token and user for persistence across app reloads
+      try {
+        await SecureStore.setItemAsync("auth_token", sessionToken);
+      } catch (e) {
+        console.log("[Auth] Failed to store token in SecureStore:", e);
+      }
+      try {
+        await AsyncStorage.setItem("auth_user", JSON.stringify(user));
+        console.log("[Auth] User saved to AsyncStorage:", user.email);
+      } catch (e) {
+        console.log("[Auth] Failed to store user in AsyncStorage:", e);
+      }
 
       dispatch({ type: "SET_TOKEN", payload: sessionToken });
       dispatch({ type: "SET_USER", payload: user });
