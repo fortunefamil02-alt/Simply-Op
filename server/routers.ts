@@ -3,6 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { jobsRouter } from "./routers/jobs";
+import { jobsDetailRouter } from "./routers/jobs-detail";
 import { managerOverridesRouter } from "./routers/manager-overrides";
 import { invoicesRouter } from "./routers/invoices";
 import { founderRouter } from "./routers/founder";
@@ -18,6 +19,7 @@ export const appRouter = router({
 
   // Job lifecycle API
   jobs: jobsRouter,
+  jobsDetail: jobsDetailRouter,
   managerOverrides: router(managerOverridesRouter),
   invoices: invoicesRouter,
 
