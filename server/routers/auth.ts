@@ -172,7 +172,31 @@ export const authRouter = router({
    * Get current user (already exists in routers.ts)
    * Kept here for reference
    */
-  me: publicProcedure.query((opts) => opts.ctx.user),
+  me: publicProcedure.query(async (opts) => {
+    if (!opts.ctx.user) return null;
+    const db = (await getDb()) as any;
+    if (!db) return null;
+    try {
+      const dbUser = await db.query.users.findFirst({
+        where: eq(users.id, opts.ctx.user.id),
+      });
+      if (!dbUser || !dbUser.isActive) return null;
+      return {
+        id: dbUser.id,
+        email: dbUser.email,
+        firstName: dbUser.firstName,
+        lastName: dbUser.lastName,
+        role: dbUser.role,
+        businessId: dbUser.businessId,
+        isActive: dbUser.isActive,
+        createdAt: dbUser.createdAt,
+        updatedAt: dbUser.updatedAt,
+      } as AuthUser;
+    } catch (error) {
+      console.error("[Auth.me] Error:", error);
+      return null;
+    }
+  }),
 
   /**
    * Logout (already exists in routers.ts)

@@ -19,6 +19,7 @@ import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { AuthLoadingScreen } from "@/components/auth-loading-screen";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -31,13 +32,16 @@ export const unstable_settings = {
  * Root layout wrapper that handles authentication state and routing
  */
 function RootLayoutNav() {
-  const { user, isInitialized } = useAuth();
+  const { user, isInitialized, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!isInitialized) return;
+  // Show loading screen while auth is initializing
+  if (!isInitialized || isLoading) {
+    return <AuthLoadingScreen />;
+  }
 
+  useEffect(() => {
     const inAuthGroup = segments[0] === "login";
 
     if (!user && !inAuthGroup) {
@@ -48,6 +52,7 @@ function RootLayoutNav() {
       if (user.role === "cleaner") {
         router.replace("/(cleaner)/jobs");
       } else {
+        // manager or super_manager
         router.replace("/(tabs)");
       }
     }

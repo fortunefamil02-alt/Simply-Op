@@ -6,7 +6,7 @@ import { trpc } from "./trpc";
 // ============================================================================
 // SANDBOX AUTHENTICATION NOTE
 // ============================================================================
-// This authentication implementation is now wired to backend for Alpha testing.
+// This authentication implementation is wired to backend for Alpha testing.
 // Alpha uses persistent data with real workflows.
 // 
 // Current implementation:
@@ -14,6 +14,7 @@ import { trpc } from "./trpc";
 // - Backend validation of credentials
 // - Session persistence via cookies and local storage
 // - Cookie-based session survives app restart
+// - auth.me validates session on app launch
 // 
 // ============================================================================
 // TYPES
@@ -27,7 +28,7 @@ export interface User {
   firstName: string | null;
   lastName: string | null;
   role: UserRole;
-  companyId: string | null; // Maps to businessId from backend
+  companyId: string | null;
   managerId: string | null;
   isActive: boolean;
   createdAt: Date;
@@ -113,23 +114,58 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // Initialize auth on mount (restore session from storage)
+  // Initialize auth on mount (validate session with backend)
   useEffect(() => {
     const initializeAuth = async () => {
       try {
         dispatch({ type: "SET_LOADING", payload: true });
 
-        // Try to get token from secure storage
-        const token = await SecureStore.getItemAsync("auth_token");
-        const userJson = await AsyncStorage.getItem("auth_user");
-
-        if (token && userJson) {
-          const user = JSON.parse(userJson) as User;
-          dispatch({ type: "SET_TOKEN", payload: token });
+        // Validate session with backend
+        // Use client to call auth.me
+        const meResult = await (trpc.auth.me as any).query();
+        
+        if (meResult) {
+          // Session is valid, restore user
+          const user: User = {
+            id: meResult.id,
+            email: meResult.email,
+            firstName: meResult.firstName,
+            lastName: meResult.lastName,
+            role: meResult.role,
+            companyId: meResult.businessId,
+            managerId: null,
+            isActive: meResult.isActive,
+            createdAt: new Date(meResult.createdAt),
+            updatedAt: new Date(meResult.updatedAt),
+          };
           dispatch({ type: "SET_USER", payload: user });
+          dispatch({ type: "SET_TOKEN", payload: "session_valid" });
+        } else {
+          // Session invalid or expired, clear storage
+          try {
+            await SecureStore.deleteItemAsync("auth_token");
+          } catch (e) {
+            // Ignore
+          }
+          try {
+            await AsyncStorage.removeItem("auth_user");
+          } catch (e) {
+            // Ignore
+          }
         }
       } catch (error) {
         console.error("[Auth] Failed to initialize:", error);
+        // Clear storage on error
+        try {
+          await SecureStore.deleteItemAsync("auth_token");
+        } catch (e) {
+          // Ignore
+        }
+        try {
+          await AsyncStorage.removeItem("auth_user");
+        } catch (e) {
+          // Ignore
+        }
       } finally {
         dispatch({ type: "SET_LOADING", payload: false });
         dispatch({ type: "SET_INITIALIZED" });
@@ -158,8 +194,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         firstName: response.firstName,
         lastName: response.lastName,
         role: response.role,
-        companyId: response.businessId, // Map businessId to companyId
-        managerId: null, // Not provided by backend
+        companyId: response.businessId,
+        managerId: null,
         isActive: response.isActive,
         createdAt: new Date(response.createdAt),
         updatedAt: new Date(response.updatedAt),
@@ -206,10 +242,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      // Note: refreshUser is called from components using useQuery hook
-      // This function is kept for manual refresh if needed
-      // For now, we rely on the stored user state from login
-      // TODO: Implement server-side session validation when needed
       console.log("[Auth] refreshUser called (session validation)");
     } catch (error) {
       console.error("[Auth] Failed to refresh user:", error);
@@ -217,7 +249,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUserRole = async (userId: string, role: UserRole) => {
-    // TODO: Implement role update when backend endpoint is available
     console.warn("[Auth] updateUserRole not yet implemented");
   };
 
