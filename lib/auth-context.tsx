@@ -3,6 +3,27 @@ import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ============================================================================
+// SANDBOX AUTHENTICATION NOTE
+// ============================================================================
+// This authentication implementation is intentionally mocked for sandbox testing.
+// Sandbox is used for UI, flow, and operational validation only.
+// 
+// Current limitations (deferred by design):
+// - User creation is in-memory only (no database persistence)
+// - Credentials are hardcoded for demo purposes
+// - JWT tokens are mock tokens (no real validation)
+// - Backend authentication is not wired
+// 
+// These limitations are acceptable for sandbox testing and will be implemented
+// when backend authentication is explicitly authorized.
+// 
+// Production deployment requires:
+// - Real user persistence in database
+// - Backend validation of credentials
+// - Real JWT token issuance
+// - Secure credential storage
+// 
+// ============================================================================
 // TYPES
 // ============================================================================
 
