@@ -65,6 +65,7 @@ export const businesses = mysqlTable("businesses", {
   zipCode: varchar("zip_code", { length: 20 }),
   country: varchar("country", { length: 100 }).default("US"),
   timezone: varchar("timezone", { length: 50 }).default("America/Los_Angeles"),
+  isSandbox: boolean("is_sandbox").notNull().default(false), // Sandbox isolation flag (default: production)
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
 });
