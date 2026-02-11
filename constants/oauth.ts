@@ -8,14 +8,15 @@ const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
 const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
-  portal: process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ?? "",
-  server: process.env.EXPO_PUBLIC_OAUTH_SERVER_URL ?? "",
-  appId: process.env.EXPO_PUBLIC_APP_ID ?? "",
-  ownerId: process.env.EXPO_PUBLIC_OWNER_OPEN_ID ?? "",
-  ownerName: process.env.EXPO_PUBLIC_OWNER_NAME ?? "",
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "",
+  portal: "https://accounts.google.com",
+  server: "https://accounts.google.com",
+  appId: "860199346942-m38pqit5o9qejr2nhjtqr94t09on0pq5.apps.googleusercontent.com",
+  ownerId: "",
+  ownerName: "",
+  apiBaseUrl: "https://simply-op-production.up.railway.app",
   deepLinkScheme: schemeFromBundleId,
 };
+
 
 export const OAUTH_PORTAL_URL = env.portal;
 export const OAUTH_SERVER_URL = env.server;
@@ -82,11 +83,15 @@ export const getLoginUrl = () => {
   const redirectUri = getRedirectUri();
   const state = encodeState(redirectUri);
 
-  const url = new URL(`${OAUTH_PORTAL_URL}/app-auth`);
-  url.searchParams.set("appId", APP_ID);
-  url.searchParams.set("redirectUri", redirectUri);
-  url.searchParams.set("state", state);
-  url.searchParams.set("type", "signIn");
+ const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+
+url.searchParams.set("client_id", APP_ID);
+url.searchParams.set("redirect_uri", redirectUri);
+url.searchParams.set("response_type", "code");
+url.searchParams.set("scope", "openid email profile");
+url.searchParams.set("state", state);
+url.searchParams.set("access_type", "offline");
+url.searchParams.set("prompt", "consent");
 
   return url.toString();
 };
