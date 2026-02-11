@@ -1,14 +1,14 @@
 export const ENV = {
-  appId: process.env.VITE_APP_ID ?? "",
-  cookieSecret: process.env.JWT_SECRET ?? "",
-  databaseUrl: process.env.DATABASE_URL ?? "",
+  appId: import.meta.env.VITE_APP_ID ?? "",
+  cookieSecret: import.meta.env.VITE_JWT_SECRET ?? "",
+  databaseUrl: import.meta.env.VITE_DATABASE_URL ?? "",
 
-  // 🔑 OAuth — REQUIRED NAME
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+  // OAuth
+  oAuthServerUrl: import.meta.env.VITE_OAUTH_SERVER_URL ?? "",
 
-  ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
-  isProduction: process.env.NODE_ENV === "production",
+  ownerOpenId: import.meta.env.VITE_OWNER_OPEN_ID ?? "",
+  isProduction: import.meta.env.PROD,
 
-  forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
-  forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  forgeApiUrl: import.meta.env.VITE_BUILT_IN_FORGE_API_URL ?? "",
+  forgeApiKey: import.meta.env.VITE_BUILT_IN_FORGE_API_KEY ?? "",
 };
