@@ -2,8 +2,9 @@
   "name": "app-template",
   "version": "1.0.0",
   "private": true,
-  "main": "expo-router/entry",
+  
   "scripts": {
+   "start": "node dist/index.js",
     "dev": "concurrently -k \"pnpm dev:server\" \"pnpm dev:metro\"",
     "dev:server": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",
     "dev:metro": "cross-env EXPO_USE_METRO_WORKSPACE_ROOT=1 npx expo start --web --port ${EXPO_PORT:-8081}",
@@ -13,7 +14,7 @@
     "lint": "expo lint",
     "format": "prettier --write .",
     "test": "vitest run",
-    "db:push": "drizzle-kit generate && drizzle-kit migrate",
+    
     "android": "expo start --android",
     "ios": "expo start --ios",
     "qr": "node scripts/generate_qr.mjs"
