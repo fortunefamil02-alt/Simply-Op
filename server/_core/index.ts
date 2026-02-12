@@ -9,6 +9,13 @@ import { createContext } from "./context";
 
 async function startServer() {
   const app = express();
+  const publicDir = path.join(process.cwd(), "server/_core/public");
+
+app.use(express.static(publicDir));
+
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
   const server = createServer(app);
 
   // Enable CORS for all routes - reflect the request origin to support credentials
