@@ -43,7 +43,25 @@ if (!ENV.oAuthServerUrl) {
     const redirectUri = atob(state);
     return redirectUri;
   }
+private encodeState(redirectUri: string): string {
+  return btoa(redirectUri);
+}
 
+getAuthorizationUrl(redirectUri: string) {
+  if (!ENV.oAuthServerUrl) {
+    throw new Error("OAUTH_SERVER_URL not configured");
+  }
+
+ const params = new URLSearchParams({
+  clientId: ENV.appId,
+  responseType: "code",
+  redirectUri,
+  state: this.encodeState(redirectUri),
+}); 
+  return {
+    url: `${ENV.oAuthServerUrl}/oauth/authorize?${params.toString()}`,
+  };
+}
   async getTokenByCode(code: string, state: string): Promise<ExchangeTokenResponse> {
     const payload: ExchangeTokenRequest = {
       clientId: ENV.appId,
