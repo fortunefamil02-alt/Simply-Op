@@ -75,19 +75,21 @@ function buildUserResponse(
 
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/start", async (req: Request, res: Response) => {
-    try {
-      const { url } = await sdk.getAuthorizationUrl({
-        redirectUri:
-          process.env.OAUTH_REDIRECT_URI ||
-          "http://localhost:3000/api/oauth/callback",
-      });
+  try {
+    const redirectUri =
+      process.env.OAUTH_REDIRECT_URI ||
+      "http://localhost:3000/api/oauth/callback";
 
-      res.redirect(url);
-    } catch (error) {
-      console.error("[OAuth] Start failed", error);
-      res.status(500).json({ error: "OAuth start failed" });
-    }
-  });
+    const auth = sdk.getAuthorizationUrl(redirectUri);
+
+    console.log("[OAuth] Redirecting to:", auth.url);
+
+    res.redirect(auth.url);
+  } catch (error) {
+    console.error("[OAuth] Start failed", error);
+    res.status(500).json({ error: "OAuth start failed" });
+  }
+});
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
