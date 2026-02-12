@@ -8,8 +8,8 @@ import { createContext } from "./context";
 
 
 async function startServer() {
-  const app = express();
-  const publicDir = path.join(process.cwd(), "server/_core/public");
+ const app = express();
+const publicDir = path.join(process.cwd(), "server/_core/public");
 
 app.use(express.static(publicDir));
 
